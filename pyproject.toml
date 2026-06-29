@@ -14,14 +14,19 @@ keywords = ["testing", "lint", "mcp", "coding-agent", "ci"]
 dependencies = []
 
 [project.optional-dependencies]
+mcp = [
+    "mcp>=1.2",
+]
 dev = [
     "pytest>=8.0",
     "ruff>=0.6",
     "mypy>=1.10",
+    "mcp>=1.2",
 ]
 
 [project.scripts]
 winnowdelta = "winnowdelta.cli:main"
+winnowdelta-mcp = "winnowdelta.mcp.server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/winnowdelta"]

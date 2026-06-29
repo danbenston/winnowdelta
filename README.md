@@ -56,6 +56,21 @@ Because the selection is heuristic and can miss tests, `--tests-from`/`--only`
 is a fast inner-loop accelerator only. A CI gate must run `winnowdelta test
 --full` before merge.
 
+## MCP server
+
+The same engine is exposed over MCP (stdio) so a coding agent gets identical
+filtered deltas. Install the extra and run the server:
+
+```sh
+pip install -e ".[mcp]"
+winnowdelta-mcp            # or: python -m winnowdelta.mcp.server
+```
+
+Tools: `run_tests` (with `selection` / `full` for impact running),
+`build_lint_delta` (with `kind` / `all`), `capture_baseline`, `clear_baseline`.
+Each takes an optional `root` (defaults to the server's working directory) and
+returns the same versioned envelope as the CLI.
+
 ## Develop
 
 ```sh
