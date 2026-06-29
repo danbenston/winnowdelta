@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# winnowdelta scratch state (baseline snapshots)
+.winnowdelta/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
