@@ -33,6 +33,31 @@ def _cmd_test(args: argparse.Namespace) -> int:
     return _emit(run, args.text)
 
 
+def _cmd_check(args: argparse.Namespace) -> int:
+    run = engine.run_check(
+        Path.cwd(),
+        subproject=args.subproject,
+        kind=args.kind,
+        timeout=args.timeout,
+        use_baseline=not args.all,
+    )
+    return _emit(run, args.text)
+
+
+def _cmd_baseline(args: argparse.Namespace) -> int:
+    if args.action == "clear":
+        cleared = engine.clear_baseline(Path.cwd(), subproject=args.subproject)
+        print("baseline cleared" if cleared else "no baseline to clear")
+        return 0
+
+    run = engine.capture_baseline(Path.cwd(), subproject=args.subproject, timeout=args.timeout)
+    if run.status is Status.ERROR:
+        print(output.to_text(run))
+        return _EXIT[Status.ERROR]
+    print(f"captured {run.summary.total} baseline diagnostic(s)")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="winnowdelta",
@@ -51,6 +76,28 @@ def build_parser() -> argparse.ArgumentParser:
         "--timeout", type=float, default=None, help="Kill the run after N seconds."
     )
     p_test.set_defaults(func=_cmd_test)
+
+    p_check = sub.add_parser(
+        "check", help="Run build/lint tools; report only diagnostics new vs baseline."
+    )
+    p_check.add_argument("subproject", nargs="?", help="Configured subproject to run.")
+    p_check.add_argument(
+        "--kind", choices=["lint", "build"], default=None,
+        help="Limit to lint or build tools (default: both).",
+    )
+    p_check.add_argument(
+        "--all", action="store_true",
+        help="Report all current diagnostics, ignoring the baseline.",
+    )
+    p_check.add_argument("--text", action="store_true", help="Human-readable output.")
+    p_check.add_argument("--timeout", type=float, default=None, help="Kill after N seconds.")
+    p_check.set_defaults(func=_cmd_check)
+
+    p_base = sub.add_parser("baseline", help="Capture or clear the diagnostics baseline.")
+    p_base.add_argument("action", choices=["capture", "clear"])
+    p_base.add_argument("subproject", nargs="?", help="Configured subproject.")
+    p_base.add_argument("--timeout", type=float, default=None, help="Kill after N seconds.")
+    p_base.set_defaults(func=_cmd_baseline)
 
     return parser
 

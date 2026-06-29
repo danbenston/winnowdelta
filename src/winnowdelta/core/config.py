@@ -41,6 +41,9 @@ class Subproject:
     stack: str
     cwd: str = "."
     commands: Mapping[str, list[str]] = field(default_factory=dict)
+    #: Explicit diagnostic tools (e.g. ["eslint", "prettier", "tsc"]). Empty =>
+    #: autodetect from the subproject's files.
+    tools: tuple[str, ...] = ()
 
     def command(self, kind: str) -> list[str] | None:
         argv = self.commands.get(kind)
@@ -101,11 +104,15 @@ def load(root: str | Path) -> Config | None:
         for kind in COMMAND_KINDS:
             if kind in spec:
                 commands[kind] = _as_argv(spec[kind], f"subproject.{name}.{kind}")
+        raw_tools = spec.get("tools", [])
+        if not isinstance(raw_tools, list):
+            raise ConfigError(f"{path}: subproject.{name}.tools must be a list")
         subprojects[name] = Subproject(
             name=name,
             stack=str(spec.get("stack", "")),
             cwd=str(spec.get("cwd", ".")),
             commands=commands,
+            tools=tuple(str(t) for t in raw_tools),
         )
     return Config(root=str(root), subprojects=subprojects)
 
@@ -130,6 +137,50 @@ def detect_stack(root: str | Path) -> str | None:
     if pyproject.exists():
         return "pytest"
     return None
+
+
+_ESLINT_CONFIGS = (
+    "eslint.config.js",
+    "eslint.config.mjs",
+    "eslint.config.cjs",
+    "eslint.config.ts",
+    ".eslintrc",
+    ".eslintrc.js",
+    ".eslintrc.cjs",
+    ".eslintrc.json",
+    ".eslintrc.yml",
+    ".eslintrc.yaml",
+)
+_PRETTIER_CONFIGS = (
+    ".prettierrc",
+    ".prettierrc.json",
+    ".prettierrc.js",
+    ".prettierrc.cjs",
+    ".prettierrc.yml",
+    ".prettierrc.yaml",
+    "prettier.config.js",
+    "prettier.config.cjs",
+)
+
+
+def detect_diagnostic_tools(cwd: str | Path) -> list[str]:
+    """Sniff which build/lint tools apply to a subproject directory."""
+    base = Path(cwd)
+    tools: list[str] = []
+
+    if any(base.glob("tsconfig*.json")):
+        tools.append("tsc")
+    if any((base / name).exists() for name in _ESLINT_CONFIGS):
+        tools.append("eslint")
+
+    has_prettier = any((base / name).exists() for name in _PRETTIER_CONFIGS)
+    pkg = base / "package.json"
+    if not has_prettier and pkg.exists():
+        has_prettier = '"prettier"' in pkg.read_text(encoding="utf-8", errors="replace")
+    if has_prettier:
+        tools.append("prettier")
+
+    return tools
 
 
 def autodetect(root: str | Path) -> Config | None:

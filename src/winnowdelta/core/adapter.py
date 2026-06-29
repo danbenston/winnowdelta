@@ -33,7 +33,29 @@ class Adapter(Protocol):
         ...
 
 
+@runtime_checkable
+class DiagnosticAdapter(Protocol):
+    """A build/lint tool that emits diagnostics (Feature #2).
+
+    Unlike test adapters (one per stack), several diagnostic tools can apply to
+    a single subproject (e.g. eslint + prettier + tsc), so these register by
+    ``tool`` name rather than stack.
+    """
+
+    #: Tool key (e.g. "tsc", "eslint", "prettier").
+    tool: str
+    #: Logical command kind ("lint" | "build").
+    command_kind: str
+
+    def collect(
+        self, sub: Subproject, cwd: Path, timeout: float | None = None
+    ) -> NormalizedRun:
+        """Run the tool in *cwd* and return its diagnostics (pre-baseline)."""
+        ...
+
+
 _REGISTRY: dict[str, Adapter] = {}
+_DIAG_REGISTRY: dict[str, DiagnosticAdapter] = {}
 
 
 def register(adapter: Adapter) -> None:
@@ -46,3 +68,15 @@ def get(stack: str) -> Adapter | None:
 
 def stacks() -> list[str]:
     return sorted(_REGISTRY)
+
+
+def register_diagnostic(adapter: DiagnosticAdapter) -> None:
+    _DIAG_REGISTRY[adapter.tool] = adapter
+
+
+def get_diagnostic(tool: str) -> DiagnosticAdapter | None:
+    return _DIAG_REGISTRY.get(tool)
+
+
+def diagnostic_tools() -> list[str]:
+    return sorted(_DIAG_REGISTRY)
