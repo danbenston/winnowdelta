@@ -28,8 +28,35 @@ def _emit(run: NormalizedRun, as_text: bool) -> int:
     return _EXIT[run.status]
 
 
+def _read_selection(args: argparse.Namespace) -> list[str] | None:
+    """Build the affected-tests selection from --only / --tests-from / --full.
+
+    Returns None when no selection was requested (run everything), including
+    under --full which forces a full suite regardless of other flags.
+    """
+    if args.full:
+        return None
+    items: list[str] = []
+    provided = False
+    if args.only:
+        items.extend(args.only)
+        provided = True
+    if args.tests_from:
+        provided = True
+        text = sys.stdin.read() if args.tests_from == "-" else Path(args.tests_from).read_text(
+            encoding="utf-8"
+        )
+        items.extend(line.strip() for line in text.splitlines() if line.strip())
+    return items if provided else None
+
+
 def _cmd_test(args: argparse.Namespace) -> int:
-    run = engine.run_test(Path.cwd(), subproject=args.subproject, timeout=args.timeout)
+    run = engine.run_test(
+        Path.cwd(),
+        subproject=args.subproject,
+        timeout=args.timeout,
+        selection=_read_selection(args),
+    )
     return _emit(run, args.text)
 
 
@@ -74,6 +101,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_test.add_argument(
         "--timeout", type=float, default=None, help="Kill the run after N seconds."
+    )
+    p_test.add_argument(
+        "--only", nargs="+", metavar="TEST",
+        help="Run only these runner-native test IDs (affected-tests selection).",
+    )
+    p_test.add_argument(
+        "--tests-from", metavar="PATH",
+        help="Read the affected-tests selection from a file (one per line; '-' for stdin).",
+    )
+    p_test.add_argument(
+        "--full", action="store_true",
+        help="Ignore any selection and run the whole suite (use this for the CI gate).",
     )
     p_test.set_defaults(func=_cmd_test)
 

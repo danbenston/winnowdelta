@@ -34,15 +34,21 @@ class PytestAdapter:
         return [python, "-m", "pytest"]
 
     def collect(
-        self, sub: Subproject, cwd: Path, timeout: float | None = None
+        self,
+        sub: Subproject,
+        cwd: Path,
+        timeout: float | None = None,
+        selection: list[str] | None = None,
     ) -> NormalizedRun:
         base = self._base_command(sub, cwd)
+        sel = list(selection) if selection else []
         return _support.collect_via_report(
             command="test",
             cwd=cwd,
             report_name="report.xml",
             build_argv=lambda report: [
                 *base,
+                *sel,
                 f"--junitxml={report}",
                 "-p",
                 "no:cacheprovider",

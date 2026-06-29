@@ -27,9 +27,20 @@ class Adapter(Protocol):
     command_kind: str
 
     def collect(
-        self, sub: Subproject, cwd: Path, timeout: float | None = None
+        self,
+        sub: Subproject,
+        cwd: Path,
+        timeout: float | None = None,
+        selection: list[str] | None = None,
     ) -> NormalizedRun:
-        """Run the framework in *cwd* and return the filtered, normalized delta."""
+        """Run the framework in *cwd* and return the filtered, normalized delta.
+
+        *selection*, when given, is a list of runner-native test identifiers
+        (pytest node IDs, Vitest/Jest file paths, Django dotted labels) to run
+        instead of the whole suite. winnowdelta passes them through verbatim —
+        producing runner-appropriate identifiers is the caller's job (e.g.
+        codegraft's ``impact_of``). ``None`` means run everything.
+        """
         ...
 
 

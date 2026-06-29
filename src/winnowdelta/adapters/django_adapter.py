@@ -44,10 +44,15 @@ class DjangoAdapter:
         return [python, "manage.py", "test"]
 
     def collect(
-        self, sub: Subproject, cwd: Path, timeout: float | None = None
+        self,
+        sub: Subproject,
+        cwd: Path,
+        timeout: float | None = None,
+        selection: list[str] | None = None,
     ) -> NormalizedRun:
         base = self._base_command(sub, cwd)
-        argv = [*base, f"--testrunner={_RUNNER_PATH}"]
+        sel = list(selection) if selection else []
+        argv = [*base, *sel, f"--testrunner={_RUNNER_PATH}"]
 
         existing = os.environ.get("PYTHONPATH", "")
         pythonpath = os.pathsep.join(filter(None, [_winnowdelta_src_dir(), existing]))

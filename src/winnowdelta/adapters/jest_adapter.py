@@ -26,15 +26,21 @@ class JestAdapter:
         return sub.command("test") or ["npx", "jest"]
 
     def collect(
-        self, sub: Subproject, cwd: Path, timeout: float | None = None
+        self,
+        sub: Subproject,
+        cwd: Path,
+        timeout: float | None = None,
+        selection: list[str] | None = None,
     ) -> NormalizedRun:
         base = self._base_command(sub)
+        sel = list(selection) if selection else []
         return _support.collect_via_report(
             command="test",
             cwd=cwd,
             report_name="jest.json",
             build_argv=lambda report: [
                 *base,
+                *sel,
                 "--ci",
                 "--passWithNoTests",
                 "--json",

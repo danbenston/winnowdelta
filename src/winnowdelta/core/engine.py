@@ -22,20 +22,18 @@ def run_test(
     root: str | Path,
     subproject: str | None = None,
     timeout: float | None = None,
+    selection: list[str] | None = None,
 ) -> NormalizedRun:
-    try:
-        cfg = config.resolve(root)
-    except config.ConfigError as exc:
-        return NormalizedRun.errored("test", str(exc))
-    if cfg is None:
-        return NormalizedRun.errored(
-            "test", "no winnowdelta.toml found and could not autodetect a stack"
-        )
+    """Run the test suite, optionally limited to an affected-tests *selection*.
 
-    try:
-        sub = cfg.get(subproject)
-    except config.ConfigError as exc:
-        return NormalizedRun.errored("test", str(exc))
+    ``selection=None`` runs the whole suite (also the ``--full`` path). A
+    provided-but-empty selection means "no tests are affected" and is a clean
+    no-op — we skip invoking the runner entirely.
+    """
+    resolved = _resolve_subproject("test", root, subproject)
+    if isinstance(resolved, NormalizedRun):
+        return resolved
+    sub, cwd = resolved
 
     adp = registry.get(sub.stack)
     if adp is None:
@@ -44,8 +42,11 @@ def run_test(
             "test", f"no test adapter for stack {sub.stack!r} (have: {known})"
         )
 
-    cwd = sub.resolve_cwd(root)
-    return adp.collect(sub, cwd, timeout)
+    if selection is not None and len(selection) == 0:
+        # codegraft found no impacted tests — nothing to run.
+        return NormalizedRun(command="test", status=Status.OK)
+
+    return adp.collect(sub, cwd, timeout, selection)
 
 
 def _tools_for(sub: Subproject, cwd: Path, kind: str | None) -> list[str]:

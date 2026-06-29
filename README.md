@@ -27,8 +27,34 @@ pip install -e ".[dev]"
 ```sh
 winnowdelta --help
 winnowdelta --version
-winnowdelta test            # Phase 0: emits the empty output envelope
+
+# Tests — report only failures (file:line + assertion), no passing/banner noise
+winnowdelta test                      # whole suite (autodetects the runner)
+winnowdelta test --text               # human-readable instead of JSON
+
+# Build/lint deltas — only diagnostics introduced since the baseline
+winnowdelta baseline capture          # snapshot current diagnostics before editing
+winnowdelta check                     # ...then report only what's new
+winnowdelta check --kind lint --all   # all current diagnostics, ignore baseline
+
+# Test-impact running — run only the affected tests
+winnowdelta test --only path/to/test.py::test_x
+codegraft-impact | winnowdelta test --tests-from -   # consume an affected-tests list
+winnowdelta test --full               # CI gate: ignore selection, run everything
 ```
+
+### The codegraft pipe
+
+Selection is upstream (codegraft decides *what* matters); winnowdelta only
+*executes*. The natural pipeline is:
+
+```
+codegraft.impact_of(changed) ∩ test_paths  →  winnowdelta test --tests-from -
+```
+
+Because the selection is heuristic and can miss tests, `--tests-from`/`--only`
+is a fast inner-loop accelerator only. A CI gate must run `winnowdelta test
+--full` before merge.
 
 ## Develop
 
