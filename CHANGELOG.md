@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.1
+
+- Fix: a configured command with a relative executable (e.g.
+  `.venv/Scripts/python.exe`) now resolves against the subproject's `cwd`
+  instead of failing with WinError 2 on Windows. Found while wiring oracle-rex's
+  multi-root config (backend 136 passed, frontend 79 passed).
+
 ## 0.1.0 — v1
 
 First usable release. Output schema frozen at `1.0`.

@@ -5,4 +5,4 @@ structured, filtered delta (failures and new-vs-baseline diagnostics) instead
 of raw, verbose console output.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
