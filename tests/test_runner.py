@@ -42,6 +42,28 @@ def test_venv_python_absent(tmp_path) -> None:
     assert runner.venv_python(tmp_path) is None
 
 
+def test_resolve_executable_makes_relative_path_absolute(tmp_path) -> None:
+    sub = tmp_path / ".venv" / "Scripts"
+    sub.mkdir(parents=True)
+    exe = sub / "python.exe"
+    exe.write_text("")
+    out = runner.resolve_executable([".venv/Scripts/python.exe", "x"], tmp_path)
+    assert out[0] == str(exe.resolve())
+    assert out[1] == "x"
+
+
+def test_resolve_executable_leaves_bare_names(tmp_path) -> None:
+    # No separator -> PATH lookup, untouched.
+    assert runner.resolve_executable(["python", "-c", "pass"], tmp_path) == [
+        "python", "-c", "pass",
+    ]
+
+
+def test_resolve_executable_leaves_missing_relative_path(tmp_path) -> None:
+    argv = ["./nope/python.exe"]
+    assert runner.resolve_executable(argv, tmp_path) == argv
+
+
 def test_run_captures_stdout_and_exit_code(tmp_path) -> None:
     result = runner.run([sys.executable, "-c", "print('hi')"], cwd=tmp_path)
     assert result.ok

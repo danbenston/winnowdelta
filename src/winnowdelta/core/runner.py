@@ -61,6 +61,26 @@ def build_argv(command: Sequence[str]) -> list[str]:
     return cmd
 
 
+def resolve_executable(argv: list[str], cwd: str | os.PathLike[str]) -> list[str]:
+    """Make a relative *path-like* executable absolute against *cwd*.
+
+    Windows resolves a relative executable against the parent process's cwd, not
+    the child's — so a configured command like ``.venv/Scripts/python.exe`` with
+    a per-subproject ``cwd`` would not be found. If argv[0] looks like a path
+    (contains a separator), is relative, and exists under *cwd*, rewrite it to an
+    absolute path. Bare names (``npm``, ``python``) are left for PATH lookup.
+    """
+    if not argv:
+        return argv
+    prog = argv[0]
+    looks_like_path = "/" in prog or "\\" in prog
+    if looks_like_path and not os.path.isabs(prog):
+        candidate = Path(cwd) / prog
+        if candidate.exists():
+            return [str(candidate.resolve()), *argv[1:]]
+    return argv
+
+
 def venv_python(root: str | os.PathLike[str]) -> str | None:
     """Return the project venv's python interpreter if one exists under *root*."""
     base = Path(root)
@@ -106,7 +126,7 @@ def run(
     *env* is merged over the current environment (not replaced). On timeout the
     whole process tree is killed and ``timed_out`` is set.
     """
-    argv = build_argv(command)
+    argv = resolve_executable(build_argv(command), cwd)
     run_env = dict(os.environ)
     if env:
         run_env.update(env)
