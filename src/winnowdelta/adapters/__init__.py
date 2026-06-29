@@ -5,6 +5,11 @@ Importing this package registers all built-in adapters into the
 make adapters discoverable by stack name.
 """
 
-from . import pytest_adapter  # noqa: F401  (registration side effect)
+from . import (  # noqa: F401  (registration side effects)
+    django_adapter,
+    jest_adapter,
+    pytest_adapter,
+    vitest_adapter,
+)
 
-__all__ = ["pytest_adapter"]
+__all__ = ["django_adapter", "jest_adapter", "pytest_adapter", "vitest_adapter"]

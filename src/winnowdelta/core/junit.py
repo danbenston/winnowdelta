@@ -90,6 +90,14 @@ def parse_junit_xml(
 
         message = (problem.get("message") or "").strip()
         file_path, line = _crash_location(problem.text)
+        # Explicit testcase attributes (set by producers like our Django
+        # runner) win over crash-line scraping when present.
+        attr_file = case.get("file")
+        attr_line = case.get("line")
+        if attr_file:
+            file_path = attr_file
+        if attr_line and attr_line.isdigit():
+            line = int(attr_line)
         expected, received = _expected_received(message)
         failures.append(
             Failure(
