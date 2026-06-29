@@ -4,6 +4,10 @@ The repo name `winnowdelta` fits the concept: *winnow* the noise, return the *de
 This plan builds the run-and-filter feedback tool described in
 [run-and-filter-feedback-tool.md](run-and-filter-feedback-tool.md) from the ground up.
 
+> **Progress:** Phases 0–7 complete. All three features ship on CLI + MCP; v1
+> schema frozen at `1.0`. Validated live against oracle-rex (Vitest, Prettier,
+> Django). Deferred per scope: go test, Python-lint deltas, Expo build.
+
 ## Guiding architecture
 
 Three user-facing features, but one internal pipeline:

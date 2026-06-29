@@ -46,7 +46,10 @@ def run_test(
         # codegraft found no impacted tests — nothing to run.
         return NormalizedRun(command="test", status=Status.OK)
 
-    return adp.collect(sub, cwd, timeout, selection)
+    try:
+        return adp.collect(sub, cwd, timeout, selection)
+    except Exception as exc:  # defensive: never leak an adapter crash to the caller
+        return NormalizedRun.errored("test", f"{sub.stack} adapter failed: {exc!r}")
 
 
 def _tools_for(sub: Subproject, cwd: Path, kind: str | None) -> list[str]:
@@ -70,7 +73,11 @@ def _collect_diagnostics(
     for tool in _tools_for(sub, cwd, kind):
         adp = registry.get_diagnostic(tool)
         assert adp is not None  # _tools_for only returns registered tools
-        run = adp.collect(sub, cwd, timeout)
+        try:
+            run = adp.collect(sub, cwd, timeout)
+        except Exception as exc:  # defensive: isolate one tool's crash
+            errors.append(f"{tool}: adapter failed: {exc!r}")
+            continue
         if run.status is Status.ERROR:
             errors.append(f"{tool}: {run.error}")
         else:

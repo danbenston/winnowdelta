@@ -112,18 +112,28 @@ def run(
         run_env.update(env)
 
     start = time.monotonic()
-    proc: subprocess.Popen[str] = subprocess.Popen(
-        argv,
-        cwd=os.fspath(cwd),
-        env=run_env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        # POSIX: own process group so we can kill the whole tree. Ignored on nt.
-        start_new_session=not _IS_WINDOWS,
-    )
+    try:
+        proc: subprocess.Popen[str] = subprocess.Popen(
+            argv,
+            cwd=os.fspath(cwd),
+            env=run_env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            # POSIX: own process group so we can kill the whole tree. Ignored on nt.
+            start_new_session=not _IS_WINDOWS,
+        )
+    except (FileNotFoundError, NotADirectoryError, OSError) as exc:
+        # Missing toolchain / bad cwd: surface as a 127 result, not an exception,
+        # so adapters report a clean ERROR rather than crashing.
+        return ExecResult(
+            exit_code=127,
+            stdout="",
+            stderr=f"failed to launch {argv[0]!r}: {exc}",
+            duration_s=time.monotonic() - start,
+        )
 
     timed_out = False
     try:

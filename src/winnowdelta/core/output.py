@@ -12,7 +12,8 @@ from dataclasses import asdict
 
 from .model import Diagnostic, Failure, NormalizedRun
 
-SCHEMA_VERSION = "0.0.1"
+# Frozen v1 wire contract. Bump only on an incompatible change to the envelope.
+SCHEMA_VERSION = "1.0"
 
 
 def to_envelope(run: NormalizedRun) -> dict[str, object]:

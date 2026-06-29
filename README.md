@@ -12,9 +12,20 @@ what to fix next.
 
 ## Status
 
-Early development. See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the
-phased build-out and [run-and-filter-feedback-tool.md](run-and-filter-feedback-tool.md)
-for the full concept and V1 scope.
+v1 (schema frozen at `1.0`). Supported V1 stacks: pytest · Django · Vitest ·
+Jest for tests, and tsc · ESLint · Prettier for build/lint deltas.
+
+- [docs/configuration.md](docs/configuration.md) — `winnowdelta.toml` reference,
+  multi-root example, invocation quirks.
+- [docs/schema.md](docs/schema.md) — the v1 output envelope.
+- [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) — phased build-out;
+  [run-and-filter-feedback-tool.md](run-and-filter-feedback-tool.md) — full concept.
+
+The point: collapse a verbose run into the minimal machine-actionable signal.
+On a trivial 4-test suite `--text` output is already ~80% smaller than raw
+pytest output; the saving grows with suite size, since winnowdelta's output
+tracks only the failures while raw output grows with every passing test and
+rendered trace.
 
 ## Install (development)
 
