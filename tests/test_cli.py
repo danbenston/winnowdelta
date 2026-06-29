@@ -6,8 +6,9 @@ import json
 
 import pytest
 
-from winnowdelta import __version__
+from winnowdelta import __version__, cli
 from winnowdelta.cli import SCHEMA_VERSION, build_parser, main
+from winnowdelta.core.model import Failure, NormalizedRun, Status, Summary
 
 
 def test_version_string() -> None:
@@ -27,7 +28,10 @@ def test_version_flag(capsys: pytest.CaptureFixture[str]) -> None:
     assert __version__ in capsys.readouterr().out
 
 
-def test_test_command_emits_valid_envelope(capsys: pytest.CaptureFixture[str]) -> None:
+def test_test_command_emits_valid_envelope(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cli.engine, "run_test", lambda *a, **k: NormalizedRun.empty("test"))
     assert main(["test"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["schema_version"] == SCHEMA_VERSION
@@ -35,6 +39,22 @@ def test_test_command_emits_valid_envelope(capsys: pytest.CaptureFixture[str]) -
     assert payload["status"] == "ok"
     assert payload["failures"] == []
     assert payload["diagnostics"] == []
+
+
+def test_exit_code_reflects_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    failed = NormalizedRun(
+        command="test",
+        status=Status.FAILED,
+        failures=[Failure(test_id="t::a")],
+        summary=Summary(total=1, failed=1),
+    )
+    monkeypatch.setattr(cli.engine, "run_test", lambda *a, **k: failed)
+    assert main(["test"]) == 1
+
+    monkeypatch.setattr(
+        cli.engine, "run_test", lambda *a, **k: NormalizedRun.errored("test", "boom")
+    )
+    assert main(["test"]) == 2
 
 
 def test_parser_builds() -> None:

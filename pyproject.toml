@@ -29,6 +29,9 @@ packages = ["src/winnowdelta"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+# Fixture projects are run as subprocesses by the adapter tests; never collect
+# them as part of winnowdelta's own suite.
+norecursedirs = ["fixtures"]
 
 [tool.ruff]
 line-length = 100

@@ -10,24 +10,27 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 
 from . import __version__
-from .core import output
-from .core.model import NormalizedRun
+from .core import engine, output
+from .core.model import NormalizedRun, Status
 from .core.output import SCHEMA_VERSION
 
 __all__ = ["SCHEMA_VERSION", "build_parser", "main"]
 
+# Process exit codes: 0 = clean, 1 = failures/diagnostics found, 2 = tool error.
+_EXIT = {Status.OK: 0, Status.FAILED: 1, Status.ERROR: 2}
 
-def _emit(run: NormalizedRun, as_text: bool) -> None:
+
+def _emit(run: NormalizedRun, as_text: bool) -> int:
     print(output.to_text(run) if as_text else output.to_json(run))
+    return _EXIT[run.status]
 
 
 def _cmd_test(args: argparse.Namespace) -> int:
-    # Phase 1: no adapter wired yet — emit the empty, typed envelope.
-    run = NormalizedRun.empty("test")
-    _emit(run, args.text)
-    return 0
+    run = engine.run_test(Path.cwd(), subproject=args.subproject, timeout=args.timeout)
+    return _emit(run, args.text)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -43,6 +46,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_test.add_argument("subproject", nargs="?", help="Configured subproject to run.")
     p_test.add_argument(
         "--text", action="store_true", help="Human-readable output instead of JSON."
+    )
+    p_test.add_argument(
+        "--timeout", type=float, default=None, help="Kill the run after N seconds."
     )
     p_test.set_defaults(func=_cmd_test)
 
