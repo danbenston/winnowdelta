@@ -36,7 +36,9 @@ under `frontend/`.
 [subproject.backend]
 stack = "django"
 cwd   = "."
-test  = ".venv/Scripts/python.exe manage.py test core"   # explicit app label, see below
+# Must be the test PACKAGE label `core.tests`, not the app label `core` — see
+# "Known quirk" below: `manage.py test core` ALSO fails discovery on this repo.
+test  = [".venv/Scripts/python.exe", "manage.py", "test", "core.tests"]
 
 [subproject.frontend]
 stack = "vitest"
@@ -66,6 +68,18 @@ Django's `manage.py test` auto-discovery walks **up** from the start directory
 while a package (`__init__.py`) is present. If your repo root has an
 `__init__.py` *and* a non-identifier directory name (e.g. a hyphen, as in
 `oracle-rex`), discovery builds an invalid module path and fails to import —
-this happens with the stock runner too, not just winnowdelta. Work around it by
-giving `test` an explicit app label (`manage.py test core`) or by configuring
-discovery so it doesn't climb past the project root.
+this happens with the stock runner too, not just winnowdelta.
+
+Work around it by giving `test` an explicit label that points **into** the test
+package. On oracle-rex (verified 2026-07-03):
+
+| Command | Result |
+|---|---|
+| `manage.py test` (adapter default) | ❌ `ModuleNotFoundError: No module named 'oracle-rex.core'` |
+| `manage.py test core` (app label) | ❌ same discovery failure — climbing past the root still trips the hyphen |
+| `manage.py test core.tests` (package label) | ✅ runs all 145 tests |
+
+So the app label alone is **not** enough here; use the deeper `core.tests`. The
+adapter's zero-config default (bare `manage.py test`) cannot run this repo — an
+explicit `test` in `winnowdelta.toml` is required, not just recommended. See
+[known-issues.md](known-issues.md) for the related MCP-server hang.

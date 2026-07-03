@@ -20,15 +20,24 @@ from __future__ import annotations
 import os
 import signal
 import subprocess
+import threading
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import IO
 
 #: Node CLIs that are ``.cmd`` shims on Windows and need ComSpec routing.
 NODE_TOOLS = frozenset({"npm", "npx", "yarn", "pnpm"})
 
 _IS_WINDOWS = os.name == "nt"
+
+#: After the child *process* exits we give its pipe-drain threads this long to
+#: flush. In the normal case the read end sees EOF the instant the child closes
+#: its stdout/stderr, so the join returns immediately. This ceiling only bites
+#: when a lingering grandchild inherited a copy of the write handle and keeps
+#: the pipe open — the exact case that used to hang ``communicate()`` forever.
+_DRAIN_GRACE_S = 2.0
 
 
 @dataclass(frozen=True)
@@ -115,6 +124,27 @@ def _kill_tree(proc: subprocess.Popen[str]) -> None:
     proc.kill()
 
 
+def _drain(stream: IO[str], sink: list[str]) -> None:
+    """Read *stream* line-by-line into *sink* until EOF.
+
+    Iterating (rather than one blocking ``.read()``) captures each flushed line
+    as it arrives, so if the read end never sees EOF — a grandchild is holding a
+    copy of the write handle open — we still keep everything written so far and
+    the caller can stop waiting on ``proc.wait()`` alone.
+    """
+    try:
+        for line in stream:
+            sink.append(line)
+    except (ValueError, OSError):
+        # Stream closed out from under us while reading; take what we have.
+        pass
+    finally:
+        try:
+            stream.close()
+        except OSError:
+            pass
+
+
 def run(
     command: Sequence[str],
     cwd: str | os.PathLike[str],
@@ -125,6 +155,13 @@ def run(
 
     *env* is merged over the current environment (not replaced). On timeout the
     whole process tree is killed and ``timed_out`` is set.
+
+    Completion is keyed off the child *process* exiting (``proc.wait``), not off
+    its stdout/stderr reaching EOF. The two differ on Windows: a grandchild that
+    inherited a copy of the child's pipe write handle keeps the pipe open after
+    the child itself exits, and ``communicate()`` would block on that handle
+    indefinitely (this is the MCP-server Django hang). We instead drain the
+    pipes on background threads and return as soon as the process is done.
     """
     argv = resolve_executable(build_argv(command), cwd)
     run_env = dict(os.environ)
@@ -137,6 +174,9 @@ def run(
             argv,
             cwd=os.fspath(cwd),
             env=run_env,
+            # Never let a child read the parent's stdin — under the stdio MCP
+            # server that stdin is the JSON-RPC pipe to the host.
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -155,19 +195,37 @@ def run(
             duration_s=time.monotonic() - start,
         )
 
+    out_sink: list[str] = []
+    err_sink: list[str] = []
+    readers = [
+        threading.Thread(target=_drain, args=(proc.stdout, out_sink), daemon=True),
+        threading.Thread(target=_drain, args=(proc.stderr, err_sink), daemon=True),
+    ]
+    for t in readers:
+        t.start()
+
     timed_out = False
     try:
-        stdout, stderr = proc.communicate(timeout=timeout)
+        proc.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         timed_out = True
         _kill_tree(proc)
-        stdout, stderr = proc.communicate()
+        proc.wait()
+
+    # The process is done. Give the drain threads a brief window to flush; they
+    # finish instantly on the normal path (EOF the moment the child closed its
+    # pipes) and only hit the ceiling when a lingering grandchild holds the pipe
+    # open — in which case we return with what we captured rather than hang. A
+    # shared deadline caps the total wait at _DRAIN_GRACE_S, not per thread.
+    deadline = time.monotonic() + _DRAIN_GRACE_S
+    for t in readers:
+        t.join(max(0.0, deadline - time.monotonic()))
 
     duration = time.monotonic() - start
     return ExecResult(
         exit_code=proc.returncode,
-        stdout=stdout or "",
-        stderr=stderr or "",
+        stdout="".join(out_sink),
+        stderr="".join(err_sink),
         duration_s=duration,
         timed_out=timed_out,
     )

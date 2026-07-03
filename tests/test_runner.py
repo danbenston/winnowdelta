@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import time
 
 import pytest
 
@@ -86,3 +87,32 @@ def test_run_timeout_kills(tmp_path) -> None:
     )
     assert result.timed_out is True
     assert not result.ok
+
+
+def test_run_returns_when_process_exits_despite_lingering_grandchild(tmp_path) -> None:
+    """Regression for the MCP-server Django hang.
+
+    The child spawns a grandchild that inherits the child's stdout/stderr pipe
+    handles and outlives it, then the child exits. On Windows ``communicate()``
+    would block on the grandchild's copy of the write handle until it closed —
+    the reported hang. ``run`` must return as soon as the *process* exits, well
+    before the grandchild's (much longer) lifetime, and still capture the
+    output the child flushed before exiting.
+    """
+    grandchild_sleep_s = 30
+    grandchild = f"import time; time.sleep({grandchild_sleep_s})"
+    script = (
+        "import subprocess, sys; "
+        f"subprocess.Popen([sys.executable, '-c', {grandchild!r}]); "
+        "print('child-done', flush=True)"
+    )
+    start = time.monotonic()
+    result = runner.run([sys.executable, "-c", script], cwd=tmp_path, timeout=None)
+    elapsed = time.monotonic() - start
+
+    assert result.exit_code == 0
+    assert result.timed_out is False
+    assert "child-done" in result.stdout
+    # Must not have waited out the grandchild. Generous ceiling for slow CI, but
+    # still an order of magnitude below the grandchild's sleep.
+    assert elapsed < grandchild_sleep_s / 2
