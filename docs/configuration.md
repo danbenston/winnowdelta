@@ -53,6 +53,26 @@ winnowdelta test backend
 winnowdelta check frontend --kind lint
 ```
 
+## TypeScript project references (composite builds)
+
+The `tsc` adapter sniffs the subproject's `tsconfig.json`. If it declares a
+non-empty `references` array or `compilerOptions.composite = true`, the adapter
+runs `tsc -b` (build mode, which follows the reference graph) instead of the
+default `tsc --noEmit`. This is automatic — no config needed.
+
+Why it matters: plain `tsc --noEmit` ignores project references, so against a
+solution-style root (`"files": []` + `"references": [...]`) it type-checks
+nothing and reports a false-clean. Build mode is portable across TypeScript
+versions but emits `.tsbuildinfo` + declarations as a side effect. To customize
+(e.g. add `--noEmit`, supported in build mode on TypeScript >= 5.6), set an
+explicit `build` command, which always wins over detection:
+
+```toml
+[subproject.web]
+stack = "vitest"
+build = ["npx", "tsc", "-b", "--noEmit", "--pretty", "false"]
+```
+
 ## Invocation quirks handled for you
 
 - **Windows node shims** — `npm`/`npx`/`yarn`/`pnpm` are `.cmd` files; winnowdelta

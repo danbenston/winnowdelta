@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.2
+
+- Fix: the `tsc` diagnostic adapter now detects **TypeScript project references
+  / composite builds** (a `tsconfig.json` with a non-empty `references` array or
+  `composite: true`) and drives them through `tsc -b`. Previously it always ran
+  plain `tsc --noEmit`, which ignores project references — against a
+  solution-style root (`files: []` + `references`) it type-checked *nothing* and
+  reported a false-clean, silently missing every type error. Flat projects are
+  unchanged (`tsc --noEmit`); an explicit `build` command in `winnowdelta.toml`
+  still wins. Verified end-to-end against a composite monorepo (CrucibleQL).
+
 ## 0.1.1
 
 - Fix: a configured command with a relative executable (e.g.

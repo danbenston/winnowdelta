@@ -47,6 +47,86 @@ def test_tsc_failure_without_diagnostics_is_error(monkeypatch: pytest.MonkeyPatc
     assert run.status is Status.ERROR
 
 
+def _capture_argv(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[str]]:
+    """Record the argv the adapter hands to the runner (clean-exit stub)."""
+    seen: dict[str, list[str]] = {}
+
+    def run(command, cwd, env=None, timeout=None):  # type: ignore[no-untyped-def]
+        seen["argv"] = command
+        return runner.ExecResult(0, "", "", 0.01, False)
+
+    monkeypatch.setattr(runner, "run", run)
+    return seen
+
+
+def test_tsc_uses_build_mode_for_project_references(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Solution-style root: plain `tsc --noEmit` would type-check nothing here.
+    (tmp_path / "tsconfig.json").write_text(
+        '{\n  "files": [],\n  "references": [{ "path": "./contracts" }]\n}',
+        encoding="utf-8",
+    )
+    seen = _capture_argv(monkeypatch)
+    TscAdapter().collect(SUB, tmp_path)
+    assert "-b" in seen["argv"]
+    assert "--noEmit" not in seen["argv"]
+
+
+def test_tsc_uses_build_mode_for_composite(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "tsconfig.json").write_text(
+        '{ "compilerOptions": { "composite": true } }', encoding="utf-8"
+    )
+    seen = _capture_argv(monkeypatch)
+    TscAdapter().collect(SUB, tmp_path)
+    assert "-b" in seen["argv"]
+
+
+def test_tsc_uses_plain_noemit_for_flat_project(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "tsconfig.json").write_text(
+        '{ "compilerOptions": { "strict": true } }', encoding="utf-8"
+    )
+    seen = _capture_argv(monkeypatch)
+    TscAdapter().collect(SUB, tmp_path)
+    assert "--noEmit" in seen["argv"]
+    assert "-b" not in seen["argv"]
+
+
+def test_tsc_empty_references_is_flat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # An empty references array is not a composite project; stay in flat mode.
+    (tmp_path / "tsconfig.json").write_text('{ "references": [] }', encoding="utf-8")
+    seen = _capture_argv(monkeypatch)
+    TscAdapter().collect(SUB, tmp_path)
+    assert "-b" not in seen["argv"]
+    assert "--noEmit" in seen["argv"]
+
+
+def test_tsc_missing_tsconfig_defaults_to_flat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen = _capture_argv(monkeypatch)
+    TscAdapter().collect(SUB, tmp_path)
+    assert "--noEmit" in seen["argv"]
+
+
+def test_tsc_build_override_beats_detection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "tsconfig.json").write_text(
+        '{ "references": [{ "path": "x" }] }', encoding="utf-8"
+    )
+    sub = Subproject("fe", "vitest", commands={"build": ["tsc", "--noEmit", "-p", "custom.json"]})
+    seen = _capture_argv(monkeypatch)
+    TscAdapter().collect(sub, tmp_path)
+    assert seen["argv"] == ["tsc", "--noEmit", "-p", "custom.json"]
+
+
 def test_eslint_reports_and_handles_bad_json(monkeypatch: pytest.MonkeyPatch) -> None:
     payload = json.dumps(
         [{"filePath": "a.ts", "messages": [
