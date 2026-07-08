@@ -16,6 +16,11 @@ venv/
 # winnowdelta scratch state (baseline snapshots)
 .winnowdelta/
 
+# Internal planning / rollout notes — kept locally, not published
+IMPLEMENTATION_PLAN.md
+run-and-filter-feedback-tool.md
+ADOPTION.md
+
 # IDE / OS
 .idea/
 .vscode/

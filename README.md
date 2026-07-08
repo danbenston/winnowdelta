@@ -5,7 +5,7 @@ commands and returns only the **structured, filtered delta** — the failures an
 the new-vs-baseline diagnostics — instead of raw, verbose console output.
 
 It *runs and reads*; it never edits code and never *selects* which files matter
-(that's [codegraft](run-and-filter-feedback-tool.md)). Its job is to collapse
+(that's codegraft's job). Its job is to collapse
 thousands of tokens of rendered DOM trees, stack traces, and pre-existing-warning
 spam into the minimal machine-actionable signal a coding agent needs to decide
 what to fix next.
@@ -18,8 +18,7 @@ Jest for tests, and tsc · ESLint · Prettier for build/lint deltas.
 - [docs/configuration.md](docs/configuration.md) — `winnowdelta.toml` reference,
   multi-root example, invocation quirks.
 - [docs/schema.md](docs/schema.md) — the v1 output envelope.
-- [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) — phased build-out;
-  [run-and-filter-feedback-tool.md](run-and-filter-feedback-tool.md) — full concept.
+- [docs/known-issues.md](docs/known-issues.md) — known quirks and their status.
 
 The point: collapse a verbose run into the minimal machine-actionable signal.
 On a trivial 4-test suite `--text` output is already ~80% smaller than raw
@@ -27,9 +26,25 @@ pytest output; the saving grows with suite size, since winnowdelta's output
 tracks only the failures while raw output grows with every passing test and
 rendered trace.
 
-## Install (development)
+## Install
+
+Not yet on PyPI — install the latest straight from GitHub:
 
 ```sh
+pip install "winnowdelta @ git+https://github.com/danbenston/winnowdelta.git"
+
+# with the MCP server extra
+pip install "winnowdelta[mcp] @ git+https://github.com/danbenston/winnowdelta.git"
+```
+
+`pipx install "git+https://github.com/danbenston/winnowdelta.git"` also works if you
+want the `winnowdelta` CLI on your PATH in an isolated environment.
+
+To hack on winnowdelta itself, clone and install editable with the dev extras:
+
+```sh
+git clone https://github.com/danbenston/winnowdelta.git
+cd winnowdelta
 pip install -e ".[dev]"
 ```
 
