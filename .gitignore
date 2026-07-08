@@ -21,6 +21,10 @@ IMPLEMENTATION_PLAN.md
 run-and-filter-feedback-tool.md
 ADOPTION.md
 
+# Live integration tests bound to local private checkouts — local-only
+tests/test_vitest_live.py
+tests/test_lint_live.py
+
 # IDE / OS
 .idea/
 .vscode/
