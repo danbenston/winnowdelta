@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.3
+
+- Add: every build/lint/check envelope now carries **`checked`** — the list of
+  diagnostic tools that actually ran (e.g. `["tsc", "eslint"]`). This removes a
+  real ambiguity: an empty `diagnostics` with a non-empty `checked` means "ran
+  and clean", while an empty `checked` means "nothing was checked" (no tool for
+  the requested `kind`, or none detected). Previously both looked identical (a
+  bare `0`), which pushed agents to shell out to a raw `tsc`/`eslint` just to get
+  an unambiguous "it compiled" signal. Additive to the frozen `1.0` schema; the
+  text renderer now prints `no new diagnostics — ran tsc, eslint` (or `no tools
+  ran — nothing to check`) instead of a bare `no new diagnostics`.
+- Docs: clarified the `build_lint_delta` MCP tool docstring so `all=True` reads
+  as what it is — the absolute "does this build/lint from scratch?" check that
+  **returns empty when clean** (right for brand-new files/packages), with an
+  explicit note that it is noisy in an already-dirty tree. The old wording
+  ("reports every current diagnostic") read as high-output and got avoided.
+
 ## 0.1.2
 
 - Fix: the `tsc` diagnostic adapter now detects **TypeScript project references

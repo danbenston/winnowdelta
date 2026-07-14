@@ -67,9 +67,17 @@ def _tools_for(sub: Subproject, cwd: Path, kind: str | None) -> list[str]:
 
 def _collect_diagnostics(
     sub: Subproject, cwd: Path, kind: str | None, timeout: float | None
-) -> tuple[list[Diagnostic], list[str]]:
+) -> tuple[list[Diagnostic], list[str], list[str]]:
+    """Run every applicable diagnostic tool. Returns (diagnostics, errors, ran).
+
+    ``ran`` is the tools that executed successfully — the "what did I actually
+    check" evidence that keeps an empty ``diagnostics`` from being ambiguous. A
+    tool that ERRORs (missing toolchain, unparseable output) is NOT in ``ran``:
+    it did not successfully check anything.
+    """
     diagnostics: list[Diagnostic] = []
     errors: list[str] = []
+    ran: list[str] = []
     for tool in _tools_for(sub, cwd, kind):
         adp = registry.get_diagnostic(tool)
         assert adp is not None  # _tools_for only returns registered tools
@@ -81,8 +89,9 @@ def _collect_diagnostics(
         if run.status is Status.ERROR:
             errors.append(f"{tool}: {run.error}")
         else:
+            ran.append(tool)
             diagnostics.extend(run.diagnostics)
-    return diagnostics, errors
+    return diagnostics, errors, ran
 
 
 def _resolve_subproject(
@@ -113,7 +122,10 @@ def run_check(
     """Run build/lint tools and report only diagnostics new vs the baseline.
 
     *kind* limits to "lint" or "build"; None runs both. When *use_baseline* is
-    False (``--all``), every current diagnostic is reported.
+    False (``all=True``), the baseline is ignored and every current diagnostic is
+    reported — the absolute "does this build/lint clean from scratch?" check,
+    which returns nothing when clean. The returned run's ``checked`` names the
+    tools that actually ran, so an empty diagnostics list is never ambiguous.
     """
     command = kind or "check"
     resolved = _resolve_subproject(command, root, subproject)
@@ -121,7 +133,7 @@ def run_check(
         return resolved
     sub, cwd = resolved
 
-    current, errors = _collect_diagnostics(sub, cwd, kind, timeout)
+    current, errors, ran = _collect_diagnostics(sub, cwd, kind, timeout)
 
     if use_baseline:
         baseline = BaselineStore(root).load(sub.name)
@@ -139,6 +151,7 @@ def run_check(
         diagnostics=introduced,
         summary=Summary(total=len(introduced), failed=len(introduced)),
         error="; ".join(errors) or None,
+        checked=ran,
     )
 
 
@@ -153,7 +166,7 @@ def capture_baseline(
         return resolved
     sub, cwd = resolved
 
-    current, errors = _collect_diagnostics(sub, cwd, None, timeout)
+    current, errors, ran = _collect_diagnostics(sub, cwd, None, timeout)
     if errors:
         return NormalizedRun.errored("baseline", "; ".join(errors))
 
@@ -163,6 +176,7 @@ def capture_baseline(
         status=Status.OK,
         diagnostics=current,
         summary=Summary(total=len(current)),
+        checked=ran,
     )
 
 

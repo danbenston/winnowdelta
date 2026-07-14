@@ -72,6 +72,11 @@ class NormalizedRun:
     summary: Summary = field(default_factory=Summary)
     duration_s: float = 0.0
     error: str | None = None  # populated only when status is ERROR
+    # The diagnostic tools that actually ran (check/baseline only) — e.g.
+    # ["tsc", "eslint"]. This disambiguates an empty `diagnostics`: a non-empty
+    # `checked` means "ran and clean"; an empty one means "nothing was checked"
+    # (no matching tool for this kind, or none detected). Empty for test runs.
+    checked: list[str] = field(default_factory=list)
 
     @classmethod
     def empty(cls, command: str) -> NormalizedRun:

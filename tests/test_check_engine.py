@@ -43,6 +43,7 @@ def test_check_all_reports_everything(monkeypatch: pytest.MonkeyPatch, tmp_path)
     run = engine.run_check(tmp_path, use_baseline=False)
     assert run.status is Status.FAILED
     assert len(run.diagnostics) == 2
+    assert run.checked == ["eslint"]  # records what actually ran
 
 
 def test_baseline_then_check_shows_only_new(
@@ -56,10 +57,12 @@ def test_baseline_then_check_shows_only_new(
     assert cap.status is Status.OK
     assert BaselineStore(tmp_path).exists("app")
 
-    # Same diagnostic present -> nothing new.
+    # Same diagnostic present -> nothing new. Empty diagnostics, but `checked`
+    # proves the tool ran (clean), not that nothing was checked.
     clean = engine.run_check(tmp_path)
     assert clean.status is Status.OK
     assert clean.diagnostics == []
+    assert clean.checked == ["eslint"]
 
     # A second diagnostic appears -> only that one is reported.
     _fake_eslint(monkeypatch, [_MSG, _MSG2])
@@ -76,6 +79,7 @@ def test_kind_filter_skips_other_tools(monkeypatch: pytest.MonkeyPatch, tmp_path
     run = engine.run_check(tmp_path, kind="build", use_baseline=False)
     assert run.status is Status.OK
     assert run.diagnostics == []
+    assert run.checked == []  # nothing ran — distinct from "ran and clean"
 
 
 def test_tool_error_surfaces(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
