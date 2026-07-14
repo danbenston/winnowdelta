@@ -43,8 +43,21 @@ def build_lint_delta(
 ) -> dict[str, object]:
     """Run build/lint tools and return only diagnostics new vs the baseline.
 
-    *kind* limits to "lint" or "build"; *all* reports every current diagnostic,
-    ignoring the baseline.
+    Default (``all=False``): reports only diagnostics you INTRODUCED since the
+    captured baseline — the low-output mode for iterating on an existing tree.
+
+    ``all=True``: ignore the baseline and report every CURRENT diagnostic.
+    Despite "every", this **returns empty when the target is clean** — so it is
+    the absolute "does this build/lint from scratch?" check. Use it for brand-new
+    files or packages, where the default can't help (a clean new file and an
+    unchecked one both show 0 new diagnostics). Caveat: in a tree that already
+    has diagnostics, ``all=True`` returns all of them (noisy) — keep the default
+    there.
+
+    *kind* limits to "lint" or "build" (None runs both). Either way the returned
+    envelope's ``checked`` lists the tools that actually ran (e.g. ["tsc",
+    "eslint"]); an empty ``diagnostics`` with a non-empty ``checked`` means "ran
+    and clean", while an empty ``checked`` means nothing was checked.
     """
     run = engine.run_check(
         _root(root),

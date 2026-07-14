@@ -35,10 +35,17 @@ returned by the CLI (stdout) and the MCP tools.
       "rule": "TS2322"            // may be null
     }
   ],
+  "checked": ["tsc", "eslint"], // diagnostic tools that actually ran (check/build/
+                                // lint). Empty for test runs. Disambiguates an
+                                // empty `diagnostics`: non-empty here = "ran and
+                                // clean"; empty here = "nothing was checked".
   "duration_s": 0.313,
   "error": null               // populated only when status == "error"
 }
 ```
+
+`checked` is additive to schema `1.0` (a consumer that ignores unknown keys is
+unaffected), so `schema_version` is unchanged.
 
 ## Status semantics
 

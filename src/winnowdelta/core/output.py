@@ -25,6 +25,10 @@ def to_envelope(run: NormalizedRun) -> dict[str, object]:
         "summary": asdict(run.summary),
         "failures": [asdict(f) for f in run.failures],
         "diagnostics": [asdict(d) for d in run.diagnostics],
+        # Which diagnostic tools actually ran (check/build/lint). Lets a consumer
+        # tell "ran and clean" (non-empty) from "nothing checked" (empty) when
+        # `diagnostics` is empty. Additive to the v1 schema.
+        "checked": list(run.checked),
         "duration_s": round(run.duration_s, 3),
         "error": run.error,
     }
@@ -74,6 +78,12 @@ def to_text(run: NormalizedRun) -> str:
             tail += f", {s.skipped} skipped"
         lines.append(tail + f"  ({run.status.value})")
     elif not lines:
-        lines.append(f"no new diagnostics ({run.status.value})")
+        # Name the tools that ran so "clean" is never confused with "nothing ran".
+        if run.checked:
+            lines.append(
+                f"no new diagnostics — ran {', '.join(run.checked)} ({run.status.value})"
+            )
+        else:
+            lines.append(f"no tools ran — nothing to check ({run.status.value})")
 
     return "\n".join(lines)

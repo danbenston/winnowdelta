@@ -15,6 +15,25 @@ def test_empty_run_envelope() -> None:
     assert env["status"] == "ok"
     assert env["failures"] == []
     assert env["diagnostics"] == []
+    assert env["checked"] == []
+
+
+def test_envelope_carries_checked_tools() -> None:
+    run = NormalizedRun(command="build", status=Status.OK, checked=["tsc", "eslint"])
+    assert output.to_envelope(run)["checked"] == ["tsc", "eslint"]
+
+
+def test_text_clean_check_names_the_tools_that_ran() -> None:
+    # A clean check must read as "ran and clean", never a bare "no diagnostics".
+    run = NormalizedRun(command="build", status=Status.OK, checked=["tsc", "eslint"])
+    text = output.to_text(run)
+    assert "no new diagnostics" in text
+    assert "tsc, eslint" in text
+
+
+def test_text_check_with_no_tools_says_nothing_ran() -> None:
+    run = NormalizedRun(command="build", status=Status.OK, checked=[])
+    assert "no tools ran" in output.to_text(run)
 
 
 def test_failure_envelope_roundtrips_json() -> None:
