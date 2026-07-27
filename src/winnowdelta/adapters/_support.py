@@ -28,8 +28,7 @@ def _temp_report(name: str) -> Iterator[Path]:
 
 
 def _diagnose(result: runner.ExecResult, command: str) -> str:
-    tail = (result.stderr or result.stdout or "").strip().splitlines()
-    detail = " ".join(tail[-3:]) if tail else f"exited {result.exit_code}"
+    detail = runner.output_tail(result)
     return f"{command}: produced no report (exit {result.exit_code}): {detail}"
 
 

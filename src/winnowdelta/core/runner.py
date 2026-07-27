@@ -18,6 +18,7 @@ to re-solve them:
 from __future__ import annotations
 
 import os
+import re
 import signal
 import subprocess
 import threading
@@ -53,6 +54,40 @@ class ExecResult:
     @property
     def ok(self) -> bool:
         return self.exit_code == 0 and not self.timed_out
+
+
+#: npm/npx chatter that says nothing about why the tool failed. The shim prints
+#: these to *stderr*, which is exactly where a naive diagnosis looks first.
+_NOISE_LINE = re.compile(r"^npm (?:notice|warn)\b", re.IGNORECASE)
+
+#: SGR/CSI colour escapes. Tools colourize when they think a TTY is attached,
+#: and these would otherwise land verbatim in the JSON envelope.
+_ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+
+
+def _meaningful_lines(text: str) -> list[str]:
+    return [
+        line
+        for line in (_ANSI.sub("", raw).strip() for raw in text.splitlines())
+        if line and not _NOISE_LINE.match(line)
+    ]
+
+
+def output_tail(result: ExecResult, limit: int = 3) -> str:
+    """The last few meaningful output lines — the "why did this fail" signal.
+
+    stdout is preferred over stderr, which is the opposite of the obvious
+    choice and the point of this helper: ``tsc`` reports on stdout while the
+    npm/npx shim writes changelog notices to stderr, so picking stderr first
+    surfaces "npm notice To update run: ..." and buries the actual cause. npm's
+    notice/warning chatter is dropped from both streams; a genuine ``npm ERR!``
+    is kept. Falls back to the exit code when nothing meaningful was written.
+    """
+    for stream in (result.stdout, result.stderr):
+        lines = _meaningful_lines(stream or "")
+        if lines:
+            return " ".join(lines[-limit:])
+    return f"exited {result.exit_code}"
 
 
 def build_argv(command: Sequence[str]) -> list[str]:

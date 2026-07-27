@@ -15,6 +15,7 @@ shows up.
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections import Counter
 from dataclasses import asdict
@@ -60,13 +61,25 @@ class BaselineStore:
         return self._path(subproject).exists()
 
     def load(self, subproject: str) -> list[Diagnostic]:
+        """Read the stored baseline, treating an unreadable one as absent.
+
+        A corrupt, truncated, or schema-drifted file must not take down the
+        run: ``check`` still has something useful to say without a baseline
+        (every current diagnostic is "new"), whereas an exception here escapes
+        the engine's always-return-a-NormalizedRun contract and tracebacks out
+        of both the CLI and the MCP server.
+        """
         path = self._path(subproject)
         if not path.exists():
             return []
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return [Diagnostic(**d) for d in data.get("diagnostics", [])]
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return [Diagnostic(**d) for d in data["diagnostics"]]
+        except (OSError, ValueError, TypeError, KeyError, AttributeError):
+            return []
 
     def save(self, subproject: str, diagnostics: list[Diagnostic]) -> Path:
+        """Write the baseline atomically, so an interrupted capture can't corrupt it."""
         self.dir.mkdir(parents=True, exist_ok=True)
         path = self._path(subproject)
         payload = {
@@ -74,7 +87,15 @@ class BaselineStore:
             "captured_at": datetime.now(UTC).isoformat(),
             "diagnostics": [asdict(d) for d in diagnostics],
         }
-        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        # Write-then-rename: os.replace is atomic on POSIX and Windows alike, so
+        # a reader never observes a half-written file and a crash mid-write
+        # leaves the previous baseline intact rather than a truncated one.
+        tmp = path.with_name(path.name + f".{os.getpid()}.tmp")
+        try:
+            tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            os.replace(tmp, path)
+        finally:
+            tmp.unlink(missing_ok=True)
         return path
 
     def clear(self, subproject: str) -> bool:

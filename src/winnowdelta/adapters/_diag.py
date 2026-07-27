@@ -15,8 +15,8 @@ from ..core.model import Diagnostic, NormalizedRun, Status, Summary
 
 
 def tail(result: runner.ExecResult) -> str:
-    lines = (result.stderr or result.stdout or "").strip().splitlines()
-    return " ".join(lines[-3:]) if lines else f"exited {result.exit_code}"
+    """Why the tool failed, with its exit code — see ``runner.output_tail``."""
+    return f"exit {result.exit_code}: {runner.output_tail(result)}"
 
 
 def run_diagnostics(
