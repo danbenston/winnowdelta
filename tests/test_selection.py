@@ -109,8 +109,19 @@ def test_read_selection_full_overrides_only() -> None:
 
 
 def test_read_selection_from_only() -> None:
-    args = _parse(["test", "--only", "a::b", "c::d"])
+    args = _parse(["test", "--only", "a::b", "--only", "c::d"])
     assert _read_selection(args) == ["a::b", "c::d"]
+
+
+def test_only_does_not_swallow_the_subproject_positional() -> None:
+    """Regression: `--only` used nargs="+", which ate the trailing positional.
+
+    `test --only a::b backend` silently ran the *default* subproject with
+    "backend" appended to the selection as if it were a test ID.
+    """
+    args = _parse(["test", "--only", "a::b", "backend"])
+    assert args.subproject == "backend"
+    assert _read_selection(args) == ["a::b"]
 
 
 def test_read_selection_from_file(tmp_path) -> None:

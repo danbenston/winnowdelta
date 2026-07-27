@@ -40,6 +40,9 @@ _IS_WINDOWS = os.name == "nt"
 #: the pipe open — the exact case that used to hang ``communicate()`` forever.
 _DRAIN_GRACE_S = 2.0
 
+#: How long to wait for a killed process to actually die before giving up on it.
+_KILL_GRACE_S = 5.0
+
 
 @dataclass(frozen=True)
 class ExecResult:
@@ -245,7 +248,13 @@ def run(
     except subprocess.TimeoutExpired:
         timed_out = True
         _kill_tree(proc)
-        proc.wait()
+        try:
+            # Bounded: an unbounded wait here would reintroduce the very hang
+            # the timeout exists to prevent, if the kill itself fails (the
+            # process is unkillable, or taskkill loses a race with a respawn).
+            proc.wait(timeout=_KILL_GRACE_S)
+        except subprocess.TimeoutExpired:
+            pass
 
     # The process is done. Give the drain threads a brief window to flush; they
     # finish instantly on the normal path (EOF the moment the child closed its
@@ -258,7 +267,9 @@ def run(
 
     duration = time.monotonic() - start
     return ExecResult(
-        exit_code=proc.returncode,
+        # None when even the post-kill wait timed out and the process is still
+        # somehow alive; -1 keeps the field an int and reads as "not ok".
+        exit_code=proc.returncode if proc.returncode is not None else -1,
         stdout="".join(out_sink),
         stderr="".join(err_sink),
         duration_s=duration,

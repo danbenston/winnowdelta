@@ -13,8 +13,11 @@ Each `[subproject.<name>]` table declares one runnable unit:
 |---|---|---|
 | `stack` | Test runner: `pytest` \| `django` \| `vitest` \| `jest` | — (required) |
 | `cwd` | Working directory, relative to the repo root | `"."` |
-| `test` / `lint` / `build` | Override the command for that kind (string or list) | autodetected |
+| `test` / `lint` / `build` | Override the command for that *kind* (string or list) | autodetected |
+| `tsc` / `eslint` / `prettier` | Override the command for that *tool* — wins over the kind key | autodetected |
 | `tools` | Explicit diagnostic tools, e.g. `["eslint","prettier","tsc"]` | autodetected from `cwd` |
+
+Any other key is a typo and is rejected at load time rather than ignored.
 
 Commands are a TOML string (shlex-split, backslashes preserved) or a list
 (preferred for paths with spaces):
@@ -23,6 +26,24 @@ Commands are a TOML string (shlex-split, backslashes preserved) or a list
 test  = ".venv/Scripts/python.exe manage.py test"   # string
 build = ["tsc", "-b"]                                # list
 ```
+
+### Kind keys vs. tool keys
+
+A kind key applies to **every** tool of that kind. That is unambiguous for
+`build` (only `tsc`) but not for `lint`, where `eslint` and `prettier` both
+qualify — `lint = [...]` redirects both. Use the per-tool key to change one:
+
+```toml
+[subproject.frontend]
+stack  = "vitest"
+tools  = ["eslint", "prettier"]
+eslint = ["npx", "eslint", "src", "--format", "json"]   # prettier untouched
+```
+
+Overrides must keep the machine-readable flags the parsers expect
+(`--format json` for ESLint, `--list-different` for Prettier, `--pretty false`
+for tsc). Pointing one at an `npm run lint` wrapper yields a parse error, not
+lint results.
 
 When a single subproject is configured (or autodetected), commands that take a
 `subproject` argument may omit it.

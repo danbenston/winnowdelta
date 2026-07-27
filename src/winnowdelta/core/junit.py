@@ -16,6 +16,7 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from .model import Failure, NormalizedRun, Status, Summary
+from .paths import relativize
 
 # Trailing crash line, e.g. ``D:\proj\test_x.py:7: AssertionError``. Non-greedy
 # file segment with a digit-anchored line number tolerates the drive-letter
@@ -41,15 +42,6 @@ def _expected_received(message: str) -> tuple[str | None, str | None]:
     if not m:
         return None, None
     return m.group("expected"), m.group("received")
-
-
-def _relativize(path: str | None, base: Path | None) -> str | None:
-    if path is None or base is None:
-        return path
-    try:
-        return str(Path(path).resolve().relative_to(base.resolve()))
-    except (ValueError, OSError):
-        return path
 
 
 def _test_id(case: ET.Element) -> str:
@@ -102,7 +94,7 @@ def parse_junit_xml(
         failures.append(
             Failure(
                 test_id=_test_id(case),
-                file=_relativize(file_path, base),
+                file=relativize(file_path, base),
                 line=line,
                 message=message,
                 expected=expected,

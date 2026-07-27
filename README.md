@@ -64,7 +64,7 @@ winnowdelta check                     # ...then report only what's new
 winnowdelta check --kind lint --all   # all current diagnostics, ignore baseline
 
 # Test-impact running — run only the affected tests
-winnowdelta test --only path/to/test.py::test_x
+winnowdelta test --only path/to/test.py::test_x   # repeat --only for more than one
 codegraft-impact | winnowdelta test --tests-from -   # consume an affected-tests list
 winnowdelta test --full               # CI gate: ignore selection, run everything
 ```

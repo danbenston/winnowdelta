@@ -156,3 +156,35 @@ def test_diag_timeout_is_error(monkeypatch: pytest.MonkeyPatch) -> None:
     _fake(monkeypatch, timed_out=True, exit_code=1)
     run = TscAdapter().collect(SUB, Path("."), timeout=1.0)
     assert run.status is Status.ERROR and "timed out" in (run.error or "")
+
+
+def _spy(monkeypatch, stdout: str = "") -> list[list[str]]:
+    """Record each argv the adapter would spawn."""
+    seen: list[list[str]] = []
+
+    def run(command, cwd, env=None, timeout=None):  # type: ignore[no-untyped-def]
+        seen.append(list(command))
+        return runner.ExecResult(0, stdout, "", 0.0, False)
+
+    monkeypatch.setattr(runner, "run", run)
+    return seen
+
+
+def test_prettier_honors_configured_command(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """Prettier ignored config entirely while eslint honored it — same `lint` kind."""
+    seen = _spy(monkeypatch)
+    sub = Subproject("fe", "vitest", commands={"prettier": ["npx", "prettier", "--check", "src"]})
+    PrettierAdapter().collect(sub, tmp_path)
+    assert seen == [["npx", "prettier", "--check", "src"]]
+
+
+def test_per_tool_command_does_not_leak_across_lint_tools(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    seen = _spy(monkeypatch, stdout="[]")
+    sub = Subproject("fe", "vitest", commands={"eslint": ["npx", "eslint", "-f", "json", "src"]})
+    EslintAdapter().collect(sub, tmp_path)
+    PrettierAdapter().collect(sub, tmp_path)
+
+    assert seen[0] == ["npx", "eslint", "-f", "json", "src"]
+    assert seen[1][:2] == ["npx", "prettier"]  # untouched by eslint's override

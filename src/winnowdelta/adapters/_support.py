@@ -62,14 +62,18 @@ def collect_via_report(
         result = runner.run(build_argv(report), cwd=cwd, env=run_env, timeout=timeout)
 
         if result.timed_out:
-            return NormalizedRun.errored(command, f"{command} timed out after {timeout}s")
+            return NormalizedRun.errored(
+                command, f"{command} timed out after {timeout}s", duration_s=result.duration_s
+            )
 
         if not report.exists() or report.stat().st_size == 0:
             if result.exit_code in empty_ok_exit_codes:
                 return NormalizedRun(
                     command=command, status=Status.OK, duration_s=result.duration_s
                 )
-            return NormalizedRun.errored(command, _diagnose(result, command))
+            return NormalizedRun.errored(
+                command, _diagnose(result, command), duration_s=result.duration_s
+            )
 
         run = parse_text(report.read_text(encoding="utf-8"))
         run.duration_s = result.duration_s

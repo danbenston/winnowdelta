@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict
 
-from .model import Diagnostic, Failure, NormalizedRun
+from .model import Diagnostic, Failure, NormalizedRun, Status
 
 # Frozen v1 wire contract. Bump only on an incompatible change to the envelope.
 SCHEMA_VERSION = "1.0"
@@ -63,7 +63,7 @@ def _diagnostic_line(d: Diagnostic) -> str:
 def to_text(run: NormalizedRun) -> str:
     """Compact human rendering — empty payload yields a single status line."""
     lines: list[str] = []
-    if run.status.value == "error":
+    if run.status is Status.ERROR:
         return f"ERROR ({run.command}): {run.error or 'unknown error'}"
 
     for f in run.failures:
@@ -85,5 +85,12 @@ def to_text(run: NormalizedRun) -> str:
             )
         else:
             lines.append(f"no tools ran — nothing to check ({run.status.value})")
+
+    # ERROR returned above, so reaching here with an `error` set means a FAILED
+    # check that still has a caveat: some tools reported diagnostics while
+    # another broke. JSON consumers see `error`; text mode used to drop it
+    # entirely, so a half-checked tree looked fully checked.
+    if run.error:
+        lines.append(f"warning: {run.error}")
 
     return "\n".join(lines)

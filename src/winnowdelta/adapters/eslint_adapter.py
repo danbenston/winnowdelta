@@ -4,6 +4,11 @@ Runs ``eslint . --format json`` and parses the JSON. ESLint exits 0 when clean
 (or warnings-only) and 1 when there are lint errors, but we drive off the parsed
 messages rather than the exit code. Non-JSON output (e.g. a config failure)
 becomes an error via the parser raising ValueError.
+
+Any override must still emit ``--format json`` — the parser reads that shape, so
+pointing this at an ``npm run lint`` wrapper reports a parse error, not lint
+results. Prefer the per-tool ``eslint = [...]`` key over a kind-level ``lint``,
+which also redirects prettier.
 """
 
 from __future__ import annotations
@@ -22,7 +27,9 @@ class EslintAdapter:
     command_kind = "lint"
 
     def _base_command(self, sub: Subproject) -> list[str]:
-        return sub.command("lint") or ["npx", "eslint", ".", "--format", "json"]
+        return sub.command("lint", tool=self.tool) or [
+            "npx", "eslint", ".", "--format", "json",
+        ]
 
     def collect(
         self, sub: Subproject, cwd: Path, timeout: float | None = None

@@ -3,6 +3,10 @@
 Runs ``prettier --list-different .`` — one unformatted file path per line, exit
 1 when any differ, 0 when clean, 2 on error. Each listed file becomes a
 formatting diagnostic.
+
+The command can be overridden per-tool (``prettier = [...]``); a kind-level
+``lint`` key also applies, but note it applies to *every* lint tool, eslint
+included — see ``config.TOOL_COMMANDS``.
 """
 
 from __future__ import annotations
@@ -21,7 +25,9 @@ class PrettierAdapter:
     command_kind = "lint"
 
     def _base_command(self, sub: Subproject) -> list[str]:
-        return ["npx", "prettier", "--list-different", "."]
+        return sub.command("lint", tool=self.tool) or [
+            "npx", "prettier", "--list-different", ".",
+        ]
 
     def collect(
         self, sub: Subproject, cwd: Path, timeout: float | None = None

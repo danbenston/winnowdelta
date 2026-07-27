@@ -51,7 +51,7 @@ class TscAdapter:
     command_kind = "build"
 
     def _base_command(self, sub: Subproject, cwd: Path) -> list[str]:
-        override = sub.command("build")
+        override = sub.command("build", tool=self.tool)
         if override is not None:
             return override
         if _uses_project_references(cwd):

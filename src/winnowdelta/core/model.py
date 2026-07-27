@@ -71,7 +71,11 @@ class NormalizedRun:
     diagnostics: list[Diagnostic] = field(default_factory=list)
     summary: Summary = field(default_factory=Summary)
     duration_s: float = 0.0
-    error: str | None = None  # populated only when status is ERROR
+    # Why winnowdelta could not do its job. Always set when status is ERROR, and
+    # ALSO set on a FAILED check where some tools reported diagnostics while
+    # others broke — there the run has a real payload *and* a caveat, and both
+    # matter. Never set when status is OK.
+    error: str | None = None
     # The diagnostic tools that actually ran (check/baseline only) — e.g.
     # ["tsc", "eslint"]. This disambiguates an empty `diagnostics`: a non-empty
     # `checked` means "ran and clean"; an empty one means "nothing was checked"
@@ -84,5 +88,20 @@ class NormalizedRun:
         return cls(command=command, status=Status.OK)
 
     @classmethod
-    def errored(cls, command: str, error: str) -> NormalizedRun:
-        return cls(command=command, status=Status.ERROR, error=error)
+    def errored(
+        cls,
+        command: str,
+        error: str,
+        *,
+        checked: list[str] | None = None,
+        duration_s: float = 0.0,
+    ) -> NormalizedRun:
+        """An ERROR run. *checked* survives a partial sweep — some tools can have
+        run cleanly before another one broke, and that evidence is still true."""
+        return cls(
+            command=command,
+            status=Status.ERROR,
+            error=error,
+            duration_s=duration_s,
+            checked=list(checked or []),
+        )

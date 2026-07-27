@@ -114,3 +114,43 @@ def test_resolve_prefers_config_over_detection(tmp_path) -> None:
     cfg = config.resolve(tmp_path)
     assert cfg is not None
     assert set(cfg.subprojects) == {"x"}
+
+
+def test_unknown_subproject_key_is_rejected(tmp_path) -> None:
+    """Typos used to be dropped silently, leaving a subproject that ignores its config.
+
+    `tool = [...]` instead of `tools = [...]` yielded "no tools ran" with no hint.
+    """
+    _write(tmp_path, '[subproject.x]\nstack = "vitest"\ntool = ["eslint"]\n')
+    with pytest.raises(config.ConfigError, match="unknown key"):
+        config.load(tmp_path)
+
+
+def test_missing_or_empty_stack_is_rejected(tmp_path) -> None:
+    _write(tmp_path, '[subproject.x]\ncwd = "frontend"\n')
+    with pytest.raises(config.ConfigError, match="stack"):
+        config.load(tmp_path)
+    _write(tmp_path, '[subproject.x]\nstack = "  "\n')
+    with pytest.raises(config.ConfigError, match="stack"):
+        config.load(tmp_path)
+
+
+def test_per_tool_command_beats_the_kind_command(tmp_path) -> None:
+    """A kind key alone cannot express "only change eslint" — both lint tools share it."""
+    _write(
+        tmp_path,
+        '[subproject.x]\nstack = "vitest"\n'
+        'lint = ["npx", "shared"]\n'
+        'eslint = ["npx", "eslint", "--format", "json"]\n',
+    )
+    sub = config.load(tmp_path).get("x")
+    assert sub.command("lint", tool="eslint") == ["npx", "eslint", "--format", "json"]
+    # prettier has no per-tool key, so it falls back to the shared kind command.
+    assert sub.command("lint", tool="prettier") == ["npx", "shared"]
+    assert sub.command("lint") == ["npx", "shared"]
+
+
+def test_command_returns_none_when_neither_key_is_set(tmp_path) -> None:
+    _write(tmp_path, '[subproject.x]\nstack = "vitest"\n')
+    sub = config.load(tmp_path).get("x")
+    assert sub.command("lint", tool="eslint") is None
