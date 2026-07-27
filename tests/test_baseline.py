@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import pytest
+
+from winnowdelta.core import config, engine
 from winnowdelta.core.baseline import BaselineStore, diff_diagnostics
-from winnowdelta.core.model import Diagnostic
+from winnowdelta.core.model import Diagnostic, Status
 
 
 def _d(file: str, rule: str, msg: str, line: int | None = None) -> Diagnostic:
@@ -66,3 +69,45 @@ def test_store_keys_by_subproject(tmp_path) -> None:
     store.save("frontend", [_d("a.ts", "R", "two")])
     assert store.load("backend")[0].message == "one"
     assert store.load("frontend")[0].message == "two"
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "not json{",              # truncated / corrupt
+        "",                       # zero-length (interrupted write)
+        '{"diagnostics": null}',  # right shape, wrong type
+        '{"other": []}',          # missing key
+        '{"diagnostics": [{"unexpected": 1}]}',  # schema drift
+    ],
+    ids=["corrupt", "empty", "null", "missing-key", "schema-drift"],
+)
+def test_unreadable_baseline_reads_as_absent(tmp_path, content: str) -> None:
+    """An unreadable baseline must degrade to "no baseline", never raise.
+
+    engine.run_check promises callers always get a NormalizedRun; an exception
+    from here tracebacks out of both the CLI and the MCP server instead.
+    """
+    store = BaselineStore(tmp_path)
+    store.save("x", [_d("a.ts", "R", "m")])
+    store._path("x").write_text(content, encoding="utf-8")
+    assert store.load("x") == []
+
+
+def test_check_survives_a_corrupt_baseline(tmp_path) -> None:
+    (tmp_path / config.CONFIG_NAME).write_text(
+        '[subproject.x]\nstack = "vitest"\ntools = []\n', encoding="utf-8"
+    )
+    BaselineStore(tmp_path)._path("x").parent.mkdir(parents=True, exist_ok=True)
+    BaselineStore(tmp_path)._path("x").write_text("{corrupt", encoding="utf-8")
+
+    run = engine.run_check(tmp_path)
+    assert run.status is Status.OK  # no tools configured, and no crash
+
+
+def test_save_is_atomic_and_leaves_no_temp_files(tmp_path) -> None:
+    store = BaselineStore(tmp_path)
+    store.save("x", [_d("a.ts", "R", "m")])
+    store.save("x", [_d("b.ts", "R", "n")])
+    assert [p.name for p in store.dir.iterdir()] == ["x.json"]
+    assert store.load("x")[0].file == "b.ts"

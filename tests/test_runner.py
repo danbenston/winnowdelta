@@ -116,3 +116,46 @@ def test_run_returns_when_process_exits_despite_lingering_grandchild(tmp_path) -
     # Must not have waited out the grandchild. Generous ceiling for slow CI, but
     # still an order of magnitude below the grandchild's sleep.
     assert elapsed < grandchild_sleep_s / 2
+
+
+def _res(stdout: str = "", stderr: str = "", exit_code: int = 1) -> runner.ExecResult:
+    return runner.ExecResult(exit_code, stdout, stderr, 0.0, False)
+
+
+def test_output_tail_prefers_stdout_over_npm_noise_on_stderr() -> None:
+    """Regression: tsc reports on stdout, npx writes changelog notices to stderr.
+
+    Picking stderr first produced errors like "npm notice To update run: ..."
+    — the npm changelog instead of the reason the check failed.
+    """
+    noise = (
+        "npm notice\n"
+        "npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.0.1\n"
+        "npm notice To update run: npm install -g npm@12.0.1\n"
+    )
+    tail = runner.output_tail(_res(stdout="error TS5083: Cannot read tsconfig.json", stderr=noise))
+    assert tail == "error TS5083: Cannot read tsconfig.json"
+
+
+def test_output_tail_drops_npm_noise_even_when_stdout_is_empty() -> None:
+    result = _res(stderr="npm warn exec\nnpm notice hi\nsh: tsc: not found\n")
+    assert runner.output_tail(result) == "sh: tsc: not found"
+
+
+def test_output_tail_keeps_npm_err_lines() -> None:
+    """`npm ERR!` is the real cause, unlike `npm notice`/`npm warn`."""
+    result = _res(stderr="npm notice x\nnpm ERR! could not determine executable to run\n")
+    assert runner.output_tail(result) == "npm ERR! could not determine executable to run"
+
+
+def test_output_tail_still_falls_back_to_stderr_and_exit_code() -> None:
+    # Missing-toolchain path: run() puts its diagnosis on stderr with no stdout.
+    assert "failed to launch" in runner.output_tail(_res(stderr="failed to launch 'nope': ..."))
+    # Nothing meaningful anywhere: the exit code is all we have.
+    assert runner.output_tail(_res(stderr="npm notice only\n", exit_code=9)) == "exited 9"
+
+
+def test_output_tail_strips_ansi_colour_codes() -> None:
+    """Colourized tool output must not leak escape codes into the JSON envelope."""
+    result = _res(stderr="Use \x1b[1mnpm install typescript\x1b[0m first")
+    assert runner.output_tail(result) == "Use npm install typescript first"
