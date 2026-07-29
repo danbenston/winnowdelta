@@ -16,6 +16,7 @@ import re
 from pathlib import Path
 
 from .model import Failure, NormalizedRun, Status, Summary
+from .paths import relativize
 
 _SKIPPED = {"pending", "skipped", "todo", "disabled"}
 
@@ -43,15 +44,6 @@ def _test_id(assertion: dict[str, object]) -> str:
     return " > ".join(parts) if parts else "<unknown>"
 
 
-def _relativize(path: str, base: Path | None) -> str:
-    if base is None:
-        return path
-    try:
-        return str(Path(path).resolve().relative_to(base.resolve()))
-    except (ValueError, OSError):
-        return path
-
-
 def _location(
     assertion: dict[str, object], test_file: str | None, blob: str, base: Path | None
 ) -> tuple[str | None, int | None]:
@@ -59,11 +51,11 @@ def _location(
     if isinstance(loc, dict) and test_file:
         ln = loc.get("line")
         if isinstance(ln, int):
-            return _relativize(test_file, base), ln
+            return relativize(test_file, base), ln
 
     matches = _STACK_LOC.findall(blob)
     if not matches:
-        return (_relativize(test_file, base) if test_file else None), None
+        return (relativize(test_file, base) if test_file else None), None
     # Prefer the frame in the test file itself; otherwise the first frame.
     chosen = matches[0]
     if test_file:
@@ -72,7 +64,7 @@ def _location(
             if Path(m[0]).name == stem:
                 chosen = m
                 break
-    return _relativize(chosen[0], base), int(chosen[1])
+    return relativize(chosen[0], base), int(chosen[1])
 
 
 def _expected_received(blob: str) -> tuple[str | None, str | None]:

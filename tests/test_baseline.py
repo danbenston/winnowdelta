@@ -109,5 +109,18 @@ def test_save_is_atomic_and_leaves_no_temp_files(tmp_path) -> None:
     store = BaselineStore(tmp_path)
     store.save("x", [_d("a.ts", "R", "m")])
     store.save("x", [_d("b.ts", "R", "n")])
-    assert [p.name for p in store.dir.iterdir()] == ["x.json"]
+    # Exactly one file: the rename replaced in place and no .tmp was orphaned.
+    assert len(list(store.dir.iterdir())) == 1
     assert store.load("x")[0].file == "b.ts"
+
+
+def test_subproject_names_that_sanitize_alike_do_not_share_a_baseline(tmp_path) -> None:
+    """`api/web` and `api_web` both sanitized to `api_web.json` and collided.
+
+    Each would then see the other's diagnostics as newly introduced.
+    """
+    store = BaselineStore(tmp_path)
+    store.save("api/web", [_d("a.ts", "R", "slash")])
+    store.save("api_web", [_d("b.ts", "R", "underscore")])
+    assert store.load("api/web")[0].message == "slash"
+    assert store.load("api_web")[0].message == "underscore"

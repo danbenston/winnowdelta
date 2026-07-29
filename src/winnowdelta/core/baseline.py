@@ -14,6 +14,7 @@ shows up.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -47,7 +48,16 @@ def diff_diagnostics(
 
 
 def _sanitize(name: str) -> str:
-    return re.sub(r"[^A-Za-z0-9_.-]", "_", name)
+    """A filesystem-safe stem that is still unique per subproject name.
+
+    Replacement alone collides — ``api/web`` and ``api_web`` both become
+    ``api_web``, so two subprojects would silently share one baseline and each
+    would see the other's diagnostics as newly introduced. The digest suffix
+    keeps distinct names distinct while the readable part aids debugging.
+    """
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", name)
+    digest = hashlib.sha256(name.encode("utf-8")).hexdigest()[:8]
+    return f"{safe}-{digest}"
 
 
 class BaselineStore:

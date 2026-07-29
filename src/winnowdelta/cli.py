@@ -73,7 +73,11 @@ def _cmd_check(args: argparse.Namespace) -> int:
 
 def _cmd_baseline(args: argparse.Namespace) -> int:
     if args.action == "clear":
-        cleared = engine.clear_baseline(Path.cwd(), subproject=args.subproject)
+        cleared, error = engine.clear_baseline(Path.cwd(), subproject=args.subproject)
+        if error is not None:
+            # A broken config is not "nothing to clear" — say so, and exit 2.
+            print(output.to_text(NormalizedRun.errored("baseline", error)))
+            return _EXIT[Status.ERROR]
         print("baseline cleared" if cleared else "no baseline to clear")
         return 0
 
@@ -103,8 +107,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--timeout", type=float, default=None, help="Kill the run after N seconds."
     )
     p_test.add_argument(
-        "--only", nargs="+", metavar="TEST",
-        help="Run only these runner-native test IDs (affected-tests selection).",
+        # Repeatable rather than nargs="+": a greedy list silently swallows the
+        # `subproject` positional, so `test --only a b backend` ran the whole
+        # default subproject with "backend" treated as a test ID.
+        "--only", action="append", metavar="TEST", default=None,
+        help="Run only this runner-native test ID (repeat for more).",
     )
     p_test.add_argument(
         "--tests-from", metavar="PATH",
@@ -129,13 +136,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Report all current diagnostics, ignoring the baseline.",
     )
     p_check.add_argument("--text", action="store_true", help="Human-readable output.")
-    p_check.add_argument("--timeout", type=float, default=None, help="Kill after N seconds.")
+    p_check.add_argument(
+        "--timeout", type=float, default=None,
+        help="Kill each tool after N seconds (applied per tool, not per run).",
+    )
     p_check.set_defaults(func=_cmd_check)
 
     p_base = sub.add_parser("baseline", help="Capture or clear the diagnostics baseline.")
     p_base.add_argument("action", choices=["capture", "clear"])
     p_base.add_argument("subproject", nargs="?", help="Configured subproject.")
-    p_base.add_argument("--timeout", type=float, default=None, help="Kill after N seconds.")
+    p_base.add_argument(
+        "--timeout", type=float, default=None,
+        help="Kill each tool after N seconds (applied per tool, not per run).",
+    )
     p_base.set_defaults(func=_cmd_baseline)
 
     return parser
@@ -147,7 +160,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not getattr(args, "command", None):
         parser.print_help()
         return 0
-    return int(args.func(args))
+    try:
+        return int(args.func(args))
+    except Exception as exc:
+        # The exit codes advertise 2 for "the tool broke"; an unhandled
+        # exception (unreadable --tests-from file, permission error) has to
+        # honor that rather than tracebacking out with 1. KeyboardInterrupt is
+        # a BaseException and deliberately still propagates.
+        run = NormalizedRun.errored(args.command, f"{type(exc).__name__}: {exc}")
+        return _emit(run, getattr(args, "text", False))
 
 
 if __name__ == "__main__":

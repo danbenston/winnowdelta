@@ -29,16 +29,24 @@ def run_diagnostics(
     timeout: float | None,
 ) -> NormalizedRun:
     result = runner.run(argv, cwd=cwd, timeout=timeout)
+    # Time spent is real even when the tool failed — the engine sums these into
+    # the run's total, and dropping them under-reports a slow broken toolchain.
     if result.timed_out:
-        return NormalizedRun.errored(command, f"{command} timed out after {timeout}s")
+        return NormalizedRun.errored(
+            command, f"{command} timed out after {timeout}s", duration_s=result.duration_s
+        )
 
     try:
         diagnostics = parse(result)
     except ValueError as exc:
-        return NormalizedRun.errored(command, f"{command}: {exc}; {tail(result)}")
+        return NormalizedRun.errored(
+            command, f"{command}: {exc}; {tail(result)}", duration_s=result.duration_s
+        )
 
     if is_error(result, diagnostics):
-        return NormalizedRun.errored(command, f"{command}: {tail(result)}")
+        return NormalizedRun.errored(
+            command, f"{command}: {tail(result)}", duration_s=result.duration_s
+        )
 
     status = Status.FAILED if diagnostics else Status.OK
     return NormalizedRun(

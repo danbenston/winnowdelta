@@ -30,6 +30,19 @@ CONFIG_NAME = "winnowdelta.toml"
 #: Command kinds a subproject may define.
 COMMAND_KINDS = ("test", "lint", "build")
 
+#: Per-tool command overrides. A *kind* key is ambiguous whenever more than one
+#: tool shares that kind — ``eslint`` and ``prettier`` are both ``lint``, so a
+#: bare ``lint`` applies to both and cannot express "only change eslint's
+#: command". These names let a single tool be overridden precisely; they take
+#: precedence over the kind key.
+TOOL_COMMANDS = ("tsc", "eslint", "prettier")
+
+#: Every key accepted inside a ``[subproject.*]`` table. Anything else is a
+#: typo, and silently ignoring it strands the user with a subproject that does
+#: not do what its config says (``tool = [...]`` instead of ``tools = [...]``
+#: yields "no tools ran" with no hint why).
+_KNOWN_KEYS = frozenset({"stack", "cwd", "tools", *COMMAND_KINDS, *TOOL_COMMANDS})
+
 
 class ConfigError(Exception):
     """Raised when ``winnowdelta.toml`` is malformed."""
@@ -45,9 +58,20 @@ class Subproject:
     #: autodetect from the subproject's files.
     tools: tuple[str, ...] = ()
 
-    def command(self, kind: str) -> list[str] | None:
-        argv = self.commands.get(kind)
-        return list(argv) if argv is not None else None
+    def command(self, kind: str, *, tool: str | None = None) -> list[str] | None:
+        """The configured argv for *kind*, or for *tool* specifically if set.
+
+        A per-tool override wins over the kind it belongs to, so a subproject
+        running both eslint and prettier can redirect one without touching the
+        other. Falls back to the kind key, which applies to every tool of that
+        kind.
+        """
+        for key in (tool, kind):
+            if key is not None:
+                argv = self.commands.get(key)
+                if argv is not None:
+                    return list(argv)
+        return None
 
     def resolve_cwd(self, root: str | Path) -> Path:
         return (Path(root) / self.cwd).resolve()
@@ -100,20 +124,37 @@ def load(root: str | Path) -> Config | None:
     for name, spec in raw_subs.items():
         if not isinstance(spec, dict):
             raise ConfigError(f"{path}: [subproject.{name}] must be a table")
+
+        # Reject typos loudly. A silently-dropped key produces a subproject that
+        # does not match its config and an empty result with no explanation.
+        unknown = sorted(set(spec) - _KNOWN_KEYS)
+        if unknown:
+            raise ConfigError(
+                f"{path}: subproject.{name} has unknown key(s) {unknown}; "
+                f"known: {sorted(_KNOWN_KEYS)}"
+            )
+
+        stack = str(spec.get("stack", "")).strip()
+        if not stack:
+            raise ConfigError(f"{path}: subproject.{name} requires a non-empty 'stack'")
+
         commands: dict[str, list[str]] = {}
-        for kind in COMMAND_KINDS:
-            if kind in spec:
-                commands[kind] = _as_argv(spec[kind], f"subproject.{name}.{kind}")
+        for key in (*COMMAND_KINDS, *TOOL_COMMANDS):
+            if key in spec:
+                commands[key] = _as_argv(spec[key], f"subproject.{name}.{key}")
+
         raw_tools = spec.get("tools", [])
         if not isinstance(raw_tools, list):
             raise ConfigError(f"{path}: subproject.{name}.tools must be a list")
         subprojects[name] = Subproject(
             name=name,
-            stack=str(spec.get("stack", "")),
+            stack=stack,
             cwd=str(spec.get("cwd", ".")),
             commands=commands,
             tools=tuple(str(t) for t in raw_tools),
         )
+    if not subprojects:
+        raise ConfigError(f"{path}: no [subproject.*] tables defined")
     return Config(root=str(root), subprojects=subprojects)
 
 

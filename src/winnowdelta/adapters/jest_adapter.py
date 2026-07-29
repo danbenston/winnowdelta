@@ -4,6 +4,12 @@ Runs ``jest --json --outputFile=<tmp>`` and parses via the shared Jest/Vitest
 JSON parser. The project's own jest config (e.g. the ``jest-expo`` preset)
 governs collection; we only add reporting flags. ``--ci`` avoids writing new
 snapshots, and ``--passWithNoTests`` keeps an empty run from being an error.
+
+Defaults to ``npx jest`` so those appended flags reach jest directly. A
+configured ``test`` command must do the same: an ``npm run test`` wrapper
+swallows everything after the script name unless it is written as
+``npm run test --`` , and jest then writes no report, which surfaces as
+"produced no report" rather than as test results.
 """
 
 from __future__ import annotations

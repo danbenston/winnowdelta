@@ -98,5 +98,45 @@ def test_clear_baseline(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     _project(tmp_path, ["eslint"])
     _fake_eslint(monkeypatch, [_MSG])
     engine.capture_baseline(tmp_path)
-    assert engine.clear_baseline(tmp_path) is True
-    assert engine.clear_baseline(tmp_path) is False
+    assert engine.clear_baseline(tmp_path) == (True, None)
+    assert engine.clear_baseline(tmp_path) == (False, None)
+
+
+def test_clear_baseline_reports_a_config_error(tmp_path) -> None:
+    """A broken config must not masquerade as "there was no baseline"."""
+    _project(tmp_path, ["eslint"])
+    cleared, error = engine.clear_baseline(tmp_path, subproject="nope")
+    assert cleared is False
+    assert error is not None and "nope" in error
+
+
+def test_check_reports_aggregate_duration(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """duration_s was always 0.0 on check: per-tool timings were discarded."""
+    _project(tmp_path, ["eslint"])
+
+    def slow(command, cwd, env=None, timeout=None):  # type: ignore[no-untyped-def]
+        return runner.ExecResult(0, "[]", "", 1.25, False)
+
+    monkeypatch.setattr(runner, "run", slow)
+    run = engine.run_check(tmp_path, use_baseline=False)
+    assert run.duration_s == pytest.approx(1.25)
+
+
+def test_errored_check_keeps_the_tools_that_did_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """A tool can run clean before another breaks; that evidence is still true."""
+    _project(tmp_path, ["eslint", "prettier"])
+
+    def mixed(command, cwd, env=None, timeout=None):  # type: ignore[no-untyped-def]
+        if "eslint" in command:
+            return runner.ExecResult(0, "[]", "", 0.5, False)
+        return runner.ExecResult(2, "", "prettier blew up", 0.25, False)
+
+    monkeypatch.setattr(runner, "run", mixed)
+    run = engine.run_check(tmp_path, use_baseline=False)
+
+    assert run.status is Status.ERROR
+    assert run.checked == ["eslint"]
+    assert run.duration_s == pytest.approx(0.75)
+    assert "prettier" in (run.error or "")

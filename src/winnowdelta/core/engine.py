@@ -8,6 +8,7 @@ than an exception — callers always get a NormalizedRun to emit.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .. import adapters  # noqa: F401  (registers built-in adapters)
@@ -65,33 +66,41 @@ def _tools_for(sub: Subproject, cwd: Path, kind: str | None) -> list[str]:
     return selected
 
 
+@dataclass
+class _Sweep:
+    """The result of running every applicable diagnostic tool once."""
+
+    diagnostics: list[Diagnostic] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+    #: Tools that executed successfully — the "what did I actually check"
+    #: evidence that keeps an empty ``diagnostics`` from being ambiguous. A tool
+    #: that ERRORs (missing toolchain, unparseable output) is NOT listed: it did
+    #: not successfully check anything.
+    ran: list[str] = field(default_factory=list)
+    #: Wall time across every tool, including ones that errored. Summed rather
+    #: than measured once so the figure survives per-tool isolation.
+    duration_s: float = 0.0
+
+
 def _collect_diagnostics(
     sub: Subproject, cwd: Path, kind: str | None, timeout: float | None
-) -> tuple[list[Diagnostic], list[str], list[str]]:
-    """Run every applicable diagnostic tool. Returns (diagnostics, errors, ran).
-
-    ``ran`` is the tools that executed successfully — the "what did I actually
-    check" evidence that keeps an empty ``diagnostics`` from being ambiguous. A
-    tool that ERRORs (missing toolchain, unparseable output) is NOT in ``ran``:
-    it did not successfully check anything.
-    """
-    diagnostics: list[Diagnostic] = []
-    errors: list[str] = []
-    ran: list[str] = []
+) -> _Sweep:
+    sweep = _Sweep()
     for tool in _tools_for(sub, cwd, kind):
         adp = registry.get_diagnostic(tool)
         assert adp is not None  # _tools_for only returns registered tools
         try:
             run = adp.collect(sub, cwd, timeout)
         except Exception as exc:  # defensive: isolate one tool's crash
-            errors.append(f"{tool}: adapter failed: {exc!r}")
+            sweep.errors.append(f"{tool}: adapter failed: {exc!r}")
             continue
+        sweep.duration_s += run.duration_s
         if run.status is Status.ERROR:
-            errors.append(f"{tool}: {run.error}")
+            sweep.errors.append(f"{tool}: {run.error}")
         else:
-            ran.append(tool)
-            diagnostics.extend(run.diagnostics)
-    return diagnostics, errors, ran
+            sweep.ran.append(tool)
+            sweep.diagnostics.extend(run.diagnostics)
+    return sweep
 
 
 def _resolve_subproject(
@@ -133,16 +142,18 @@ def run_check(
         return resolved
     sub, cwd = resolved
 
-    current, errors, ran = _collect_diagnostics(sub, cwd, kind, timeout)
+    sweep = _collect_diagnostics(sub, cwd, kind, timeout)
 
     if use_baseline:
         baseline = BaselineStore(root).load(sub.name)
-        introduced = diff_diagnostics(current, baseline)
+        introduced = diff_diagnostics(sweep.diagnostics, baseline)
     else:
-        introduced = current
+        introduced = sweep.diagnostics
 
-    if errors and not introduced:
-        return NormalizedRun.errored(command, "; ".join(errors))
+    if sweep.errors and not introduced:
+        return NormalizedRun.errored(
+            command, "; ".join(sweep.errors), checked=sweep.ran, duration_s=sweep.duration_s
+        )
 
     status = Status.FAILED if introduced else Status.OK
     return NormalizedRun(
@@ -150,8 +161,9 @@ def run_check(
         status=status,
         diagnostics=introduced,
         summary=Summary(total=len(introduced), failed=len(introduced)),
-        error="; ".join(errors) or None,
-        checked=ran,
+        duration_s=sweep.duration_s,
+        error="; ".join(sweep.errors) or None,
+        checked=sweep.ran,
     )
 
 
@@ -166,23 +178,37 @@ def capture_baseline(
         return resolved
     sub, cwd = resolved
 
-    current, errors, ran = _collect_diagnostics(sub, cwd, None, timeout)
-    if errors:
-        return NormalizedRun.errored("baseline", "; ".join(errors))
+    sweep = _collect_diagnostics(sub, cwd, None, timeout)
+    if sweep.errors:
+        # Refuse to record a partial baseline: the tools that did not run would
+        # have their pre-existing diagnostics reported as newly introduced.
+        return NormalizedRun.errored(
+            "baseline", "; ".join(sweep.errors), checked=sweep.ran, duration_s=sweep.duration_s
+        )
 
-    BaselineStore(root).save(sub.name, current)
+    BaselineStore(root).save(sub.name, sweep.diagnostics)
     return NormalizedRun(
         command="baseline",
         status=Status.OK,
-        diagnostics=current,
-        summary=Summary(total=len(current)),
-        checked=ran,
+        diagnostics=sweep.diagnostics,
+        summary=Summary(total=len(sweep.diagnostics)),
+        duration_s=sweep.duration_s,
+        checked=sweep.ran,
     )
 
 
-def clear_baseline(root: str | Path, subproject: str | None = None) -> bool:
+def clear_baseline(
+    root: str | Path, subproject: str | None = None
+) -> tuple[bool, str | None]:
+    """Delete a subproject's baseline. Returns ``(cleared, error)``.
+
+    The two failure modes are genuinely different and used to collapse into a
+    bare ``False``: "there was no baseline" (fine, nothing to do) versus "the
+    config is broken so we never found out" (worth reporting). Callers need to
+    tell them apart to pick an exit code.
+    """
     resolved = _resolve_subproject("baseline", root, subproject)
     if isinstance(resolved, NormalizedRun):
-        return False
+        return False, resolved.error
     sub, _cwd = resolved
-    return BaselineStore(root).clear(sub.name)
+    return BaselineStore(root).clear(sub.name), None

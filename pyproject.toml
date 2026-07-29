@@ -14,14 +14,17 @@ keywords = ["testing", "lint", "mcp", "coding-agent", "ci"]
 dependencies = []
 
 [project.optional-dependencies]
+# Upper-bounded on purpose: mcp 2.0.0 removed `mcp.server.fastmcp` (FastMCP is
+# now MCPServer in `mcp.server.mcpserver`), so an unpinned major silently broke
+# CI the day 2.0.0 shipped. Lift this together with the server port, not before.
 mcp = [
-    "mcp>=1.2",
+    "mcp>=1.2,<2",
 ]
 dev = [
     "pytest>=8.0",
     "ruff>=0.6",
     "mypy>=1.10",
-    "mcp>=1.2",
+    "mcp>=1.2,<2",
 ]
 
 [project.scripts]

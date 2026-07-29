@@ -80,6 +80,10 @@ def capture_baseline(
 
 
 def clear_baseline(root: str | None = None, subproject: str | None = None) -> dict[str, object]:
-    """Delete the stored baseline for a subproject."""
-    cleared = engine.clear_baseline(_root(root), subproject=subproject)
-    return {"cleared": cleared}
+    """Delete the stored baseline for a subproject.
+
+    ``cleared`` is False both when there was no baseline and when the config
+    could not be resolved; ``error`` is non-null only in the second case.
+    """
+    cleared, error = engine.clear_baseline(_root(root), subproject=subproject)
+    return {"cleared": cleared, "error": error}

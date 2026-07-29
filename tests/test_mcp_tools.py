@@ -66,7 +66,15 @@ def test_capture_baseline_envelope(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_clear_baseline_returns_flag(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(engine, "clear_baseline", lambda *a, **k: True)
-    assert tools.clear_baseline() == {"cleared": True}
-    monkeypatch.setattr(engine, "clear_baseline", lambda *a, **k: False)
-    assert tools.clear_baseline() == {"cleared": False}
+    monkeypatch.setattr(engine, "clear_baseline", lambda *a, **k: (True, None))
+    assert tools.clear_baseline() == {"cleared": True, "error": None}
+    monkeypatch.setattr(engine, "clear_baseline", lambda *a, **k: (False, None))
+    assert tools.clear_baseline() == {"cleared": False, "error": None}
+
+
+def test_clear_baseline_distinguishes_absent_from_broken_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """"No baseline" and "config is broken" both returned a bare False before."""
+    monkeypatch.setattr(engine, "clear_baseline", lambda *a, **k: (False, "unknown subproject"))
+    assert tools.clear_baseline() == {"cleared": False, "error": "unknown subproject"}

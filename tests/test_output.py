@@ -92,3 +92,26 @@ def test_text_render_error_status() -> None:
     run = NormalizedRun.errored("test", "pytest not found")
     assert output.to_text(run) == "ERROR (test): pytest not found"
     assert output.to_envelope(run)["error"] == "pytest not found"
+
+
+def test_text_surfaces_a_partial_failure_warning() -> None:
+    """A FAILED check can carry a caveat; text mode used to drop it silently.
+
+    JSON consumers always saw `error`, so a half-checked tree looked fully
+    checked only in --text.
+    """
+    run = NormalizedRun(
+        command="check",
+        status=Status.FAILED,
+        diagnostics=[Diagnostic(file="a.ts", severity="error", message="boom", line=1)],
+        error="tsc: exit 1: not installed",
+        checked=["eslint"],
+    )
+    text = output.to_text(run)
+    assert "ERROR a.ts:1  boom" in text
+    assert "warning: tsc: exit 1: not installed" in text
+
+
+def test_text_has_no_warning_line_when_nothing_broke() -> None:
+    run = NormalizedRun(command="check", status=Status.OK, checked=["eslint"])
+    assert "warning:" not in output.to_text(run)
